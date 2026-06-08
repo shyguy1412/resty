@@ -31,10 +31,6 @@ pub fn api_module(body: TokenStream) -> TokenStream {
     .into()
 }
 
-// macro_rules! endpoint {
-//     () => {};
-// }
-
 #[proc_macro_attribute]
 pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
     let endpoint_fn = parse_macro_input!(body as syn::ItemFn);
@@ -74,7 +70,7 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
         static #slice_ident: (&'static [&'static str],::resty::Handler, ::resty::HttpMethod) = (&[#(#endpoint),*], &#fn_ident, ::resty::HttpMethod::#method);
         pub fn #fn_ident(#(#input: #input_type),*) -> ::smol::Task<()> {
             #endpoint_fn;
-            ::resty::task(#fn_ident(#(#input),*))
+            ::resty::spawn_task(#fn_ident(#(#input),*))
         }
     }
     .into()
