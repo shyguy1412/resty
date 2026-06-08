@@ -1,6 +1,12 @@
 use std::{collections::HashMap, sync::LazyLock};
 
-pub type Handler = &'static (dyn Fn(crate::Request, crate::Response) -> smol::Task<()> + Sync);
+pub type Handler = &'static (
+             dyn for<'a> Fn(
+    crate::Request<'a>,
+    crate::Response<'a>,
+) -> std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Send>>
+                 + Sync
+         );
 
 #[derive(Default)]
 pub struct Route {

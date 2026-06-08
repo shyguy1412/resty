@@ -36,6 +36,8 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
     let endpoint_fn = parse_macro_input!(body as syn::ItemFn);
     let method = parse_macro_input!(args as syn::Ident);
     let fn_ident = &endpoint_fn.sig.ident;
+    let generics = &endpoint_fn.sig.generics;
+    let lifetimes: Vec<_> = generics.lifetimes().collect();
 
     let (input, input_type): (Vec<_>, Vec<_>) = endpoint_fn
         .sig
@@ -68,9 +70,10 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
         #[::resty::linkme::distributed_slice(::resty::ROUTES)]
         #[linkme(crate = ::resty::linkme)]
         static #slice_ident: (&'static [&'static str],::resty::Handler, ::resty::HttpMethod) = (&[#(#endpoint),*], &#fn_ident, ::resty::HttpMethod::#method);
-        pub fn #fn_ident(#(#input: #input_type),*) -> ::smol::Task<()> {
+        pub fn #fn_ident #generics (#(#input: #input_type),*) -> ::std::pin::Pin<Box<dyn Future<Output = ()> + #(#lifetimes)+* + Send>> {
             #endpoint_fn;
-            ::resty::spawn_task(#fn_ident(#(#input),*))
+            // ::resty::spawn_task()
+            Box::pin(async {#fn_ident(#(#input),*).await})
         }
     }
     .into()

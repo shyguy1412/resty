@@ -1,23 +1,14 @@
-use std::{collections::HashMap, net::SocketAddrV4, string::FromUtf8Error};
+use std::net::SocketAddrV4;
 
-use smol::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
-};
+use smol::{io::AsyncWriteExt, net::TcpListener};
+
+use crate::{Request, Response};
 
 static EXECUTOR: smol::Executor = smol::Executor::new();
 
 #[inline(always)]
 pub fn bind(addr: SocketAddrV4) -> () {
     EXECUTOR.spawn(accept_connections(addr)).detach();
-}
-
-#[inline(always)]
-#[doc(hidden)]
-pub fn spawn_task<T: Send + 'static>(
-    future: impl Future<Output = T> + Send + 'static,
-) -> smol::Task<T> {
-    EXECUTOR.spawn(future)
 }
 
 #[allow(unreachable_code)]
@@ -44,15 +35,15 @@ async fn accept_connections(addr: SocketAddrV4) -> () {
             continue;
         };
 
-        spawn_task(swallow(handle_stream(stream))).detach();
+        let time = std::time::Instant::now();
+
+        let task = async move {
+            let _ = handle_stream(stream).await;
+            println!("Request handled in {}µs", time.elapsed().as_micros());
+        };
+
+        EXECUTOR.spawn(task).detach();
     }
-}
-
-async fn swallow<T: Future>(task: T) -> () {
-    let time = std::time::Instant::now();
-    task.await;
-
-    println!("Request handled in {}µs", time.elapsed().as_micros());
 }
 
 async fn handle_stream(mut stream: smol::net::TcpStream) -> Result<(), Box<dyn std::error::Error>> {
@@ -67,48 +58,28 @@ async fn handle_stream(mut stream: smol::net::TcpStream) -> Result<(), Box<dyn s
         todo!("Handle parsing errors");
     };
 
-    let headers = request.headers.into_iter().try_fold(
-        HashMap::<String, Vec<String>>::new(),
-        |mut map, header| -> Result<_, FromUtf8Error> {
-            let value = String::from_utf8(header.value.to_vec())?;
-            match map.get_mut(header.name) {
-                Some(vec) => vec.push(value),
-                None => {
-                    map.insert(header.name.to_string(), vec![value]);
-                }
-            };
-
-            Ok(map)
-        },
-    )?;
-
-    // println!(
-    //     "Method: {}; Path: {}; HTTP Version: {}",
-    //     request.method.unwrap(),
-    //     request.path.unwrap(),
-    //     request.version.unwrap()
-    // );
-
-    let Some((handler, method)) = request
+    let Some(handler) = request
         .path
         .and_then(|route| crate::routing::ROUTE_TABLE.route(route))
         .zip(request.method.map(Into::into))
-        .and_then(|(route, method)| Some((route.endpoints.get(&method)?, method)))
+        .and_then(|(route, method)| route.endpoints.get(&method))
     else {
         let _ = stream.write("404".as_bytes()).await;
         return Ok(());
     };
 
+    let Some(data) = request
+        .method
+        .zip(request.path)
+        .zip(request.version)
+        .map(|((a, b), c)| (a, b, c))
+    else {
+        todo!("Handle parsing errors");
+    };
+
     handler(
-        crate::Request {
-            method,
-            headers,
-            body: (),
-            readable: stream.clone().boxed_reader(),
-        },
-        crate::Response {
-            writeable: stream.clone().boxed_writer(),
-        },
+        Request::new(data.0, data.1, data.2, request.headers, stream.clone()),
+        Response::new(stream.clone()),
     )
     .await;
 

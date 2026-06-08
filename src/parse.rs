@@ -1,9 +1,10 @@
-use std::{
-    collections::HashMap,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 
-use smol::{io::AsyncReadExt, net::TcpStream, stream::StreamExt};
+use smol::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpStream,
+    stream::StreamExt,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Hash, Eq)]
 pub enum HttpMethod {
@@ -60,14 +61,33 @@ pub async fn read_header(stream: &mut TcpStream, buff: &mut Vec<u8>) -> std::io:
     Ok(header_count)
 }
 
-pub struct Request<T = ()> {
-    pub method: HttpMethod,
-    pub headers: HashMap<String, Vec<String>>,
-    pub body: T,
-    pub(crate) readable: std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>,
+pub struct Request<'a> {
+    pub method: &'a str,
+    pub path: &'a str,
+    pub version: u8,
+    pub headers: &'a mut [httparse::Header<'a>],
+    readable: std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>,
 }
 
-impl Deref for Request {
+impl<'a> Request<'a> {
+    pub fn new(
+        method: &'a str,
+        path: &'a str,
+        version: u8,
+        headers: &'a mut [httparse::Header<'a>],
+        stream: TcpStream,
+    ) -> Self {
+        Self {
+            method,
+            path,
+            version,
+            headers,
+            readable: stream.boxed_reader(),
+        }
+    }
+}
+
+impl<'a> Deref for Request<'a> {
     type Target = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>;
 
     fn deref(&self) -> &Self::Target {
@@ -75,26 +95,34 @@ impl Deref for Request {
     }
 }
 
-impl DerefMut for Request {
+impl DerefMut for Request<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.readable
     }
 }
 
-pub struct Response {
-    pub(crate) writeable: std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>,
+pub struct Response<'a> {
+    writeable: std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send + 'a>>,
 }
 
-impl Deref for Response {
-    type Target = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
+impl<'a> Deref for Response<'a> {
+    type Target = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send + 'a>>;
 
     fn deref(&self) -> &Self::Target {
         &self.writeable
     }
 }
 
-impl DerefMut for Response {
+impl DerefMut for Response<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.writeable
+    }
+}
+
+impl<'a> Response<'a> {
+    pub fn new(stream: TcpStream) -> Self {
+        Self {
+            writeable: stream.boxed_writer(),
+        }
     }
 }
