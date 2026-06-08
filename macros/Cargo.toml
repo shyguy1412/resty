@@ -1,5 +1,5 @@
 [package]
-name = "blaze_macros"
+name = "resty_macros"
 version = "0.1.0"
 edition = "2024"
 
@@ -8,4 +8,4 @@ proc-macro = true
 
 [dependencies]
 quote = "1.0.44"
-syn = {version = "2.0.114", features = ["full"]}
+syn = { version = "2.0.114", features = ["full"] }

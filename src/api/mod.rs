@@ -1,39 +1,23 @@
-use std::pin::Pin;
+use std::collections::HashMap;
 
-use smol::{future::FutureExt, io::AsyncWriteExt, net::TcpStream};
+use smol::Task;
+use smol::{io::AsyncWriteExt, net::TcpStream};
 
-use crate::OwnedRequest;
-
-pub type Endpoint = &'static dyn Fn(OwnedRequest, TcpStream) -> Pin<Box<EndpointFuture>>;
-
-pub const GET_HELLO_WORLD: Endpoint = &|request: OwnedRequest, stream: TcpStream| {
-    pub async fn get_hello_world(mut _request: OwnedRequest, mut stream: TcpStream) {
+// pub type Endpoint = &'static dyn Fn(OwnedRequest, TcpStream) -> Pin<Box<()>>;
+// use crate::EXECUTOR;
+pub fn get_hello_world(headers: HashMap<String, Box<[u8]>>, stream: TcpStream) -> Task<()> {
+    pub async fn get_hello_world_impl(
+        mut _headers: HashMap<String, Box<[u8]>>,
+        mut stream: TcpStream,
+    ) {
         if let Err(err) = stream.write_all(b"Hello World!").await {
             println!("{err}");
         };
     }
-    EndpointFuture::new(move || Box::pin(get_hello_world(request, stream)))
-};
-
-pub struct EndpointFuture {
-    inner: Pin<Box<dyn Future<Output = ()>>>,
+    crate::task(get_hello_world_impl(headers, stream))
+    // EXECUTOR.spawn(get_hello_world_impl(headers, stream))
 }
 
-impl EndpointFuture {
-    pub fn new<T: FnOnce() -> Pin<Box<dyn Future<Output = ()>>>>(f: T) -> Pin<Box<Self>> {
-        Box::pin(EndpointFuture { inner: f() })
-    }
-}
-
-unsafe impl Send for EndpointFuture {}
-
-impl Future for EndpointFuture {
-    type Output = ();
-
-    fn poll(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Self::Output> {
-        self.inner.poll(cx)
-    }
-}
+// pub const GET_HELLO_WORLD: Endpoint = &|request: OwnedRequest, stream: TcpStream| {
+//     EndpointFuture::new(move || Box::pin(get_hello_world(request, stream)))
+// };

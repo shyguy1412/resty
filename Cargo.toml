@@ -1,7 +1,9 @@
 [package]
-name = "blaze_server"
+name = "resty"
 version = "0.1.0"
 edition = "2024"
+
+[lib]
 
 [dependencies]
 httparse = "1.10.1"
@@ -9,5 +11,5 @@ linkme = "0.3.35"
 smol = "2.0.2"
 url = "2.5.8"
 
-[dependencies.blaze_macros]
+[dependencies.resty_macros]
 path = "./macros"
