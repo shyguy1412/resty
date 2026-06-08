@@ -1,6 +1,5 @@
 mod parse;
-pub use httparse::Request;
-pub use parse::HttpMethod;
+pub use parse::{HttpMethod, Request, Response};
 
 mod routing;
 

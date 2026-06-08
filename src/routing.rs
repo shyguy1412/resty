@@ -1,7 +1,6 @@
 use std::{collections::HashMap, sync::LazyLock};
 
-pub type Handler =
-    &'static (dyn Fn(HashMap<String, Box<[u8]>>, smol::net::TcpStream) -> smol::Task<()> + Sync);
+pub type Handler = &'static (dyn Fn(crate::Request, crate::Response) -> smol::Task<()> + Sync);
 
 #[derive(Default)]
 pub struct Route {

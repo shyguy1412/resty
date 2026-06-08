@@ -1,3 +1,8 @@
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+};
+
 use smol::{io::AsyncReadExt, net::TcpStream, stream::StreamExt};
 
 #[derive(Clone, Copy, Debug, PartialEq, Hash, Eq)]
@@ -53,4 +58,43 @@ pub async fn read_header(stream: &mut TcpStream, buff: &mut Vec<u8>) -> std::io:
         }
     }
     Ok(header_count)
+}
+
+pub struct Request<T = ()> {
+    pub method: HttpMethod,
+    pub headers: HashMap<String, Vec<String>>,
+    pub body: T,
+    pub(crate) readable: std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>,
+}
+
+impl Deref for Request {
+    type Target = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.readable
+    }
+}
+
+impl DerefMut for Request {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.readable
+    }
+}
+
+pub struct Response {
+    pub(crate) writeable: std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>,
+}
+
+impl Deref for Response {
+    type Target = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.writeable
+    }
+}
+
+impl DerefMut for Response {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.writeable
+    }
 }
