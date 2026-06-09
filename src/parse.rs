@@ -1,5 +1,9 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+};
 
+use serde::Serialize;
 use smol::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
@@ -70,20 +74,23 @@ pub struct Request<'a> {
 }
 
 impl<'a> Request<'a> {
-    pub fn new(
-        method: &'a str,
-        path: &'a str,
-        version: u8,
-        headers: &'a mut [httparse::Header<'a>],
-        stream: TcpStream,
-    ) -> Self {
-        Self {
-            method,
-            path,
-            version,
-            headers,
+    pub fn new(request: httparse::Request<'a, 'a>, stream: TcpStream) -> Option<Self> {
+        let Some(data) = request
+            .method
+            .zip(request.path)
+            .zip(request.version)
+            .map(|((a, b), c)| (a, b, c))
+        else {
+            return None;
+        };
+
+        Some(Self {
+            method: data.0,
+            path: data.1,
+            version: data.2,
+            headers: request.headers,
             readable: stream.boxed_reader(),
-        }
+        })
     }
 }
 
@@ -101,11 +108,24 @@ impl DerefMut for Request<'_> {
     }
 }
 
-pub struct Response<'a> {
-    writeable: std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send + 'a>>,
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum ResponseState {
+    Status,
+    Header,
+    Body,
 }
 
-impl<'a> Deref for Response<'a> {
+#[doc(hidden)]
+pub struct UnTyped;
+
+pub struct Response<'a, B = UnTyped> {
+    state: ResponseState,
+    status: Option<u16>,
+    writeable: std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send + 'a>>,
+    body: PhantomData<B>,
+}
+
+impl<'a, B> Deref for Response<'a, B> {
     type Target = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send + 'a>>;
 
     fn deref(&self) -> &Self::Target {
@@ -113,16 +133,69 @@ impl<'a> Deref for Response<'a> {
     }
 }
 
-impl DerefMut for Response<'_> {
+impl<B> DerefMut for Response<'_, B> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.writeable
     }
 }
 
-impl<'a> Response<'a> {
-    pub fn new(stream: TcpStream) -> Self {
+impl Response<'_> {
+    pub(crate) fn new(stream: TcpStream) -> Self {
         Self {
+            state: ResponseState::Status,
+            status: None,
             writeable: stream.boxed_writer(),
+            body: PhantomData,
+        }
+    }
+}
+
+impl<'a, B> Response<'a, B> {
+    pub async fn status(&mut self, status: u16, reason: &str) -> u16 {
+        if let Some(status) = self.status {
+            return status;
+        }
+
+        if status < 100 || status >= 1000 || self.state != ResponseState::Status {
+            return 0;
+        }
+
+        self.status.replace(status);
+
+        let _ = self
+            .write(format!("HTTP/1.1 {status} {reason}\r\n").as_bytes())
+            .await;
+
+        self.state = ResponseState::Header;
+        status
+    }
+}
+
+impl<'a, B: Serialize> Response<'a, B> {
+    pub async fn send(&mut self, data: B) {
+        if self.state == ResponseState::Body {
+            self.status(200, "OK").await;
+        }
+
+        if self.state == ResponseState::Header {
+            let _ = self.write("\r\n".as_bytes()).await;
+        }
+
+        self.state = ResponseState::Body;
+
+        let data = &serde_json::to_string(&data).expect("Faulty JSON");
+
+        let _ = self.write(data.as_bytes()).await;
+    }
+}
+
+impl<'a, B: Serialize> From<Response<'a, UnTyped>> for Response<'a, B> {
+    fn from(value: Response<'a, UnTyped>) -> Self {
+        Self {
+            state: value.state,
+            status: value.status,
+            writeable: value.writeable,
+            body: PhantomData,
         }
     }
 }

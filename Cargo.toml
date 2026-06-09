@@ -8,6 +8,8 @@ edition = "2024"
 [dependencies]
 httparse = "1.10.1"
 linkme = "0.3.35"
+serde = "1.0.228"
+serde_json = "1.0.150"
 smol = "2.0.2"
 url = "2.5.8"
 

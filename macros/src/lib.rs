@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::OnceLock};
 
 use proc_macro::TokenStream;
-use quote::format_ident;
+use quote::{ToTokens, format_ident};
 use syn::parse_macro_input;
 
 static BASE_PATH: OnceLock<PathBuf> = OnceLock::new();
@@ -34,7 +34,26 @@ pub fn api_module(body: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
     let endpoint_fn = parse_macro_input!(body as syn::ItemFn);
-    let method = parse_macro_input!(args as syn::Ident);
+
+    let args = parse_macro_input!(args with syn::punctuated::Punctuated<syn::Meta, syn::token::Comma>::parse_terminated);
+    let args = match args
+        .iter()
+        .map(|meta| meta.require_name_value())
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(args) => args,
+        Err(err) => panic!("{err}"),
+    };
+
+    let method = args
+        .iter()
+        .find(|meta| meta.path.to_token_stream().to_string() == "Method")
+        .expect("Missing required argument: Method")
+        .value
+        .to_token_stream()
+        .to_string();
+    let method = format_ident!("{method}");
+
     let fn_ident = &endpoint_fn.sig.ident;
     let generics = &endpoint_fn.sig.generics;
     let lifetimes: Vec<_> = generics.lifetimes().collect();
@@ -51,6 +70,7 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
             syn::Pat::Ident(ref pat_ident) => Some((&pat_ident.ident, ty)),
             _ => None,
         })
+        .map(|(input, ty)| (input, remove_generics(*ty.clone())))
         .collect();
 
     let slice_ident = format_ident!("{fn_ident}_route");
@@ -73,8 +93,31 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
         pub fn #fn_ident #generics (#(#input: #input_type),*) -> ::std::pin::Pin<Box<dyn Future<Output = ()> + #(#lifetimes)+* + Send>> {
             #endpoint_fn;
             // ::resty::spawn_task()
-            Box::pin(async {#fn_ident(#(#input),*).await})
+            Box::pin(async {#fn_ident(#(#input.into()),*).await})
         }
     }
     .into()
+}
+
+fn remove_generics(mut ty: syn::Type) -> syn::Type {
+    match ty {
+        syn::Type::Path(ref mut type_path) => {
+            type_path.path.segments.iter_mut().for_each(|path_segment| {
+                match &mut path_segment.arguments {
+                    syn::PathArguments::AngleBracketed(angle_bracketed_generic_arguments) => {
+                        angle_bracketed_generic_arguments.args = angle_bracketed_generic_arguments
+                            .args
+                            .clone()
+                            .into_iter()
+                            .take(1)
+                            .collect();
+                    }
+                    _ => (),
+                }
+            });
+
+            ty
+        }
+        _ => ty,
+    }
 }

@@ -68,20 +68,13 @@ async fn handle_stream(mut stream: smol::net::TcpStream) -> Result<(), Box<dyn s
         return Ok(());
     };
 
-    let Some(data) = request
-        .method
-        .zip(request.path)
-        .zip(request.version)
-        .map(|((a, b), c)| (a, b, c))
-    else {
-        todo!("Handle parsing errors");
+    let Some(request) = Request::new(request, stream.clone()) else {
+        todo!("Handle parsing errors")
     };
 
-    handler(
-        Request::new(data.0, data.1, data.2, request.headers, stream.clone()),
-        Response::new(stream.clone()),
-    )
-    .await;
+    let response = Response::new(stream.clone());
+
+    handler(request, response).await;
 
     Ok(())
 }
