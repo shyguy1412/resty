@@ -63,10 +63,13 @@ pub fn api_module(body: TokenStream) -> TokenStream {
                 .to_string_lossy()
                 .to_string()
         })
+        .filter(|p| p != "mod.rs")
         .enumerate()
         .map(|(i, p)| (p, format_ident!("__endpoint{i}")))
         .collect();
 
+    //rust-analyzer is missing support for Span::local_file
+    //this enabled manual mod declaration purely for rust_analyzer so intellisense can still work
     match paths.iter().count() == 0 {
         true => quote::quote! {mod #decl;},
         false => quote::quote! {
