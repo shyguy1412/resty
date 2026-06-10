@@ -1,7 +1,6 @@
 use std::{collections::HashMap, sync::LazyLock};
 
-pub type Handler = dyn for<'a> Fn(httparse::Request<'a, 'a>, smol::net::TcpStream) -> crate::EndpointTask<'a>
-    + Sync;
+pub type Handler = dyn for<'a> Fn(HandlerData<'a>) -> crate::EndpointTask<'a> + Sync;
 
 #[derive(Default)]
 pub struct Route {
@@ -10,18 +9,34 @@ pub struct Route {
 }
 
 impl Route {
-    pub fn route<'a>(&'a self, path: &str) -> Option<&'a Route> {
-        let mut segments = path.strip_prefix("/").unwrap_or(path).split("/");
+    pub fn route<'a>(&'a self, path: &'a str) -> Option<(&'a Route, Vec<&'a str>)> {
+        let mut path_parameters = vec![];
+        let mut segments = path
+            .strip_prefix("/")
+            .unwrap_or(path)
+            .split("?")
+            .take(1)
+            .last()
+            .unwrap_or("")
+            .split("/");
         let mut route = self;
 
         while let Some(current_segment) = segments.next() {
-            let Some(next_route) = route.segments.get(current_segment) else {
-                return None;
+            let next_route = match route.segments.get(current_segment) {
+                Some(route) => route,
+                None => match route.segments.get("@param") {
+                    Some(route) => {
+                        path_parameters.push(current_segment);
+                        route
+                    }
+                    None => return None,
+                },
             };
+
             route = next_route;
         }
 
-        Some(route)
+        Some((route, path_parameters))
     }
 }
 
@@ -37,6 +52,12 @@ pub type RouteSlice = (
 pub static ROUTES: [RouteSlice];
 pub(crate) static ROUTE_TABLE: LazyLock<Route> = LazyLock::new(build_route_table);
 
+pub struct HandlerData<'a> {
+    pub request: httparse::Request<'a, 'a>,
+    pub path_params: Vec<&'a str>,
+    pub stream: smol::net::TcpStream,
+}
+
 fn build_route_table() -> Route {
     let mut route_table = Route::default();
 
@@ -46,11 +67,16 @@ fn build_route_table() -> Route {
         for current_segment in *route {
             let Route { segments, .. } = current_table;
 
+            let key = match current_segment.chars().nth(0).map(|c| c == '[') {
+                Some(true) => "@param",
+                _ => current_segment,
+            };
+
             if !segments.contains_key(current_segment) {
-                segments.insert(current_segment, Route::default());
+                segments.insert(key, Route::default());
             }
 
-            current_table = segments.get_mut(current_segment).unwrap()
+            current_table = segments.get_mut(key).unwrap()
         }
 
         current_table.endpoints.insert(*method, *handler);

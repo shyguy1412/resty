@@ -1,10 +1,36 @@
-use std::{path::PathBuf, sync::OnceLock};
+use std::{
+    fs::{self, DirEntry},
+    io,
+    path::{Path, PathBuf},
+    sync::OnceLock,
+};
 
 use proc_macro::TokenStream;
 use quote::{ToTokens, format_ident};
-use syn::{DeriveInput, parse_macro_input};
+use syn::parse_macro_input;
 
 static BASE_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+// one possible implementation of walking a directory only visiting files
+fn visit_dirs(dir: &Path) -> io::Result<Vec<DirEntry>> {
+    let mut files = vec![];
+    fn visit_dirs(dir: &Path, files: &mut Vec<DirEntry>) -> io::Result<()> {
+        if dir.is_dir() {
+            for entry in fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    visit_dirs(&path, files)?;
+                } else {
+                    files.push(entry);
+                }
+            }
+        }
+        Ok(())
+    }
+    visit_dirs(dir, &mut files)?;
+    Ok(files)
+}
 
 #[proc_macro]
 pub fn api_module(body: TokenStream) -> TokenStream {
@@ -25,8 +51,32 @@ pub fn api_module(body: TokenStream) -> TokenStream {
         panic!("`api_module` macro may only be called once");
     };
 
-    quote::quote! {
-        mod #decl;
+    let (paths, idents): (Vec<_>, Vec<_>) = BASE_PATH
+        .get()
+        .and_then(|p| visit_dirs(p).ok())
+        .unwrap_or(vec![])
+        .into_iter()
+        .map(|d| {
+            d.path()
+                .strip_prefix(BASE_PATH.get().unwrap())
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
+        })
+        .enumerate()
+        .map(|(i, p)| (p, format_ident!("__endpoint{i}")))
+        .collect();
+
+    match paths.iter().count() == 0 {
+        true => quote::quote! {mod #decl;},
+        false => quote::quote! {
+            mod #decl {
+                #(
+                    #[path = #paths]
+                    mod #idents;
+                )*
+            }
+        },
     }
     .into()
 }
@@ -76,15 +126,15 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
         #[linkme::distributed_slice(::resty::ROUTES)]
         #[linkme(crate = linkme)]
         static #slice_ident: ::resty::RouteSlice =(&[#(#endpoint),*], &#fn_ident, ::resty::HttpMethod::#method);
-        pub fn #fn_ident #generics (request: httparse::Request<#lifetime, #lifetime>, stream: smol::net::TcpStream)
+        pub fn #fn_ident #generics (data: ::resty::HandlerData<#lifetime>)
         -> ::resty::EndpointTask<#lifetime> {
             #endpoint_fn;
             Box::pin(async move {
-                let Some(request) = Request::new(request, stream.clone()).await else {
+                let Some(request) = Request::new(data.request, data.path_params, data.stream.clone()).await else {
                     todo!("Handle parsing errors")
                 };
-    
-                let response = Response::new(stream.clone());
+
+                let response = Response::new(data.stream.clone());
                 #fn_ident(request, response).await;
             })
         }

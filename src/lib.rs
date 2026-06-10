@@ -7,11 +7,9 @@ mod runtime;
 pub use runtime::*;
 
 pub use resty_macros::*;
-pub use routing::{Handler, ROUTES, RouteSlice};
+pub use routing::{Handler, HandlerData, ROUTES, RouteSlice};
 
 #[doc(hidden)]
 pub mod __private {
-    pub use httparse;
     pub use linkme;
-    pub use smol;
 }

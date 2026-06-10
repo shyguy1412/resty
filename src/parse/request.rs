@@ -1,6 +1,10 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    str::from_utf8,
+};
 
 use smol::io::AsyncReadExt;
+use url::Url;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
@@ -27,16 +31,18 @@ impl std::fmt::Display for Error {
 
 pub struct Request<'a, B = ()> {
     pub method: &'a str,
-    pub path: &'a str,
     pub version: u8,
     pub headers: &'a mut [httparse::Header<'a>],
     pub body: Result<Box<B>, Error>,
+    pub url: Url,
+    pub path_params: Vec<&'a str>,
     readable: std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>,
 }
 
 impl<'a, B: Deserialize> Request<'a, B> {
     pub async fn new(
         request: httparse::Request<'a, 'a>,
+        path_params: Vec<&'a str>,
         mut stream: smol::net::TcpStream,
     ) -> Option<Self> {
         let Some(data) = request
@@ -50,12 +56,25 @@ impl<'a, B: Deserialize> Request<'a, B> {
 
         let body = body(&request, &mut stream).await;
 
+        let host = request
+            .headers
+            .iter()
+            .find_map(|httparse::Header { name, value }| match *name == "Host" {
+                true => from_utf8(value).ok(),
+                false => None,
+            })
+            .unwrap_or("localhost");
+
+        let url =
+            Url::parse(&format!("http://{host}{}", data.1)).expect("todo: handle malformed url");
+
         Some(Self {
             method: data.0,
-            path: data.1,
+            url,
             version: data.2,
             headers: request.headers,
             readable: stream.boxed_reader(),
+            path_params,
             body,
         })
     }

@@ -2,6 +2,8 @@ use std::net::SocketAddrV4;
 
 use smol::{io::AsyncWriteExt, net::TcpListener};
 
+use crate::routing::HandlerData;
+
 pub type EndpointTask<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Send>>;
 
 static EXECUTOR: smol::Executor = smol::Executor::new();
@@ -61,17 +63,24 @@ async fn handle_stream(mut stream: smol::net::TcpStream) -> Result<(), Box<dyn s
         todo!("Handle parsing errors");
     };
 
-    let Some(handler) = request
+    let Some((handler, path_params)) = request
         .path
         .and_then(|route| crate::routing::ROUTE_TABLE.route(route))
         .zip(request.method.map(Into::into))
-        .and_then(|(route, method)| route.endpoints.get(&method))
+        .and_then(|((route, params), method)| Some((route.endpoints.get(&method)?, params)))
     else {
         let _ = stream.write("404".as_bytes()).await;
         return Ok(());
     };
 
-    handler(request, stream).await;
+    println!("{path_params:?}");
+
+    handler(HandlerData {
+        request,
+        path_params,
+        stream,
+    })
+    .await;
 
     Ok(())
 }
