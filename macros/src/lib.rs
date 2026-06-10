@@ -2,7 +2,7 @@ use std::{path::PathBuf, sync::OnceLock};
 
 use proc_macro::TokenStream;
 use quote::{ToTokens, format_ident};
-use syn::parse_macro_input;
+use syn::{DeriveInput, parse_macro_input};
 
 static BASE_PATH: OnceLock<PathBuf> = OnceLock::new();
 
@@ -56,22 +56,7 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
 
     let fn_ident = &endpoint_fn.sig.ident;
     let generics = &endpoint_fn.sig.generics;
-    let lifetimes: Vec<_> = generics.lifetimes().collect();
-
-    let (input, input_type): (Vec<_>, Vec<_>) = endpoint_fn
-        .sig
-        .inputs
-        .iter()
-        .filter_map(|arg| match arg {
-            syn::FnArg::Receiver(_) => None,
-            syn::FnArg::Typed(pat_type) => Some((&pat_type.pat, &pat_type.ty)),
-        })
-        .filter_map(|(input, ty)| match **input {
-            syn::Pat::Ident(ref pat_ident) => Some((&pat_ident.ident, ty)),
-            _ => None,
-        })
-        .map(|(input, ty)| (input, remove_generics(*ty.clone())))
-        .collect();
+    let lifetime = generics.lifetimes().take(1).collect::<Vec<_>>()[0];
 
     let slice_ident = format_ident!("{fn_ident}_route");
 
@@ -87,37 +72,83 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
         .split("/");
 
     quote::quote! {
-        #[::resty::linkme::distributed_slice(::resty::ROUTES)]
-        #[linkme(crate = ::resty::linkme)]
-        static #slice_ident: (&'static [&'static str],::resty::Handler, ::resty::HttpMethod) = (&[#(#endpoint),*], &#fn_ident, ::resty::HttpMethod::#method);
-        pub fn #fn_ident #generics (#(#input: #input_type),*) -> ::std::pin::Pin<Box<dyn Future<Output = ()> + #(#lifetimes)+* + Send>> {
+        use ::resty::__private::*;
+        #[linkme::distributed_slice(::resty::ROUTES)]
+        #[linkme(crate = linkme)]
+        static #slice_ident: ::resty::RouteSlice =(&[#(#endpoint),*], &#fn_ident, ::resty::HttpMethod::#method);
+        pub fn #fn_ident #generics (request: httparse::Request<#lifetime, #lifetime>, stream: smol::net::TcpStream)
+        -> ::resty::EndpointTask<#lifetime> {
             #endpoint_fn;
-            // ::resty::spawn_task()
-            Box::pin(async {#fn_ident(#(#input.into()),*).await})
+            Box::pin(async move {
+                let Some(request) = Request::new(request, stream.clone()).await else {
+                    todo!("Handle parsing errors")
+                };
+    
+                let response = Response::new(stream.clone());
+                #fn_ident(request, response).await;
+            })
         }
     }
     .into()
 }
 
-fn remove_generics(mut ty: syn::Type) -> syn::Type {
-    match ty {
-        syn::Type::Path(ref mut type_path) => {
-            type_path.path.segments.iter_mut().for_each(|path_segment| {
-                match &mut path_segment.arguments {
-                    syn::PathArguments::AngleBracketed(angle_bracketed_generic_arguments) => {
-                        angle_bracketed_generic_arguments.args = angle_bracketed_generic_arguments
-                            .args
-                            .clone()
-                            .into_iter()
-                            .take(1)
-                            .collect();
-                    }
-                    _ => (),
-                }
-            });
+#[proc_macro_derive(Serialize, attributes(serializer))]
+pub fn derive_resty_serialize(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as syn::DeriveInput);
 
-            ty
+    let serializer_tokens = ast
+        .attrs
+        .iter()
+        .find(|attr| attr.path().to_token_stream().to_string() == "serializer")
+        .expect("serializer attribute required for deriving Serialize")
+        .meta
+        .require_list()
+        .inspect_err(|err| panic!("{err}"))
+        .unwrap()
+        .tokens
+        .to_token_stream()
+        .into();
+
+    let serializer = parse_macro_input!(serializer_tokens as syn::Path);
+
+    let ident = ast.ident;
+
+    quote::quote! {
+    impl ::resty::Serialize for #ident {
+        fn serialize(self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+            #serializer(self)
         }
-        _ => ty,
     }
+    }
+    .into()
+}
+
+#[proc_macro_derive(Deserialize, attributes(deserializer))]
+pub fn derive_resty_deserialize(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as syn::DeriveInput);
+
+    let deserializer_tokens = ast
+        .attrs
+        .iter()
+        .find(|attr| attr.path().to_token_stream().to_string() == "deserializer")
+        .expect("deserializer attribute required for deriving Serialize")
+        .meta
+        .require_list()
+        .inspect_err(|err| panic!("{err}"))
+        .unwrap()
+        .tokens
+        .to_token_stream()
+        .into();
+
+    let deserializer = parse_macro_input!(deserializer_tokens as syn::Path);
+    let ident = ast.ident;
+
+    quote::quote! {
+    impl ::resty::Deserialize for #ident {
+        fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
+            #deserializer(data)
+        }
+    }
+    }
+    .into()
 }

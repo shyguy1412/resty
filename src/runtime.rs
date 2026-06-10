@@ -2,7 +2,7 @@ use std::net::SocketAddrV4;
 
 use smol::{io::AsyncWriteExt, net::TcpListener};
 
-use crate::{Request, Response};
+pub type EndpointTask<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Send>>;
 
 static EXECUTOR: smol::Executor = smol::Executor::new();
 
@@ -14,6 +14,7 @@ pub fn bind(addr: SocketAddrV4) -> () {
 #[allow(unreachable_code)]
 #[inline(always)]
 pub fn spawn_thread() -> std::thread::JoinHandle<std::convert::Infallible> {
+    println!("Thread Spawned");
     std::thread::spawn(|| {
         smol::block_on(async {
             loop {
@@ -35,11 +36,13 @@ async fn accept_connections(addr: SocketAddrV4) -> () {
             continue;
         };
 
+        println!("Connection accepted");
+
         let time = std::time::Instant::now();
 
         let task = async move {
             let _ = handle_stream(stream).await;
-            println!("Request handled in {}µs", time.elapsed().as_micros());
+            println!("Request handled in {}ms", time.elapsed().as_millis());
         };
 
         EXECUTOR.spawn(task).detach();
@@ -68,13 +71,7 @@ async fn handle_stream(mut stream: smol::net::TcpStream) -> Result<(), Box<dyn s
         return Ok(());
     };
 
-    let Some(request) = Request::new(request, stream.clone()) else {
-        todo!("Handle parsing errors")
-    };
-
-    let response = Response::new(stream.clone());
-
-    handler(request, response).await;
+    handler(request, stream).await;
 
     Ok(())
 }

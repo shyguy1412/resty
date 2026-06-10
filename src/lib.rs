@@ -1,13 +1,17 @@
 mod parse;
-pub use parse::{HttpMethod, Request, Response};
+pub use parse::{Deserialize, HttpMethod, Request, Response, Serialize};
 
 mod routing;
 
 mod runtime;
 pub use runtime::*;
 
-#[doc(hidden)]
-pub use linkme;
 pub use resty_macros::*;
+pub use routing::{Handler, ROUTES, RouteSlice};
+
 #[doc(hidden)]
-pub use routing::{Handler, ROUTES};
+pub mod __private {
+    pub use httparse;
+    pub use linkme;
+    pub use smol;
+}

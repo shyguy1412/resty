@@ -1,17 +1,12 @@
 use std::{collections::HashMap, sync::LazyLock};
 
-pub type Handler = &'static (
-             dyn for<'a> Fn(
-    crate::Request<'a>,
-    crate::Response<'a>,
-) -> std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Send>>
-                 + Sync
-         );
+pub type Handler = dyn for<'a> Fn(httparse::Request<'a, 'a>, smol::net::TcpStream) -> crate::EndpointTask<'a>
+    + Sync;
 
 #[derive(Default)]
 pub struct Route {
     pub(crate) segments: HashMap<&'static str, Route>,
-    pub(crate) endpoints: HashMap<crate::parse::HttpMethod, Handler>,
+    pub(crate) endpoints: HashMap<crate::parse::HttpMethod, &'static Handler>,
 }
 
 impl Route {
@@ -30,9 +25,17 @@ impl Route {
     }
 }
 
+#[doc(hidden)]
+pub type RouteSlice = (
+    &'static [&'static str],
+    &'static Handler,
+    crate::parse::HttpMethod,
+);
+
+#[doc(hidden)]
 #[linkme::distributed_slice]
-pub static ROUTES: [(&'static [&'static str], Handler, crate::parse::HttpMethod)];
-pub static ROUTE_TABLE: LazyLock<Route> = LazyLock::new(build_route_table);
+pub static ROUTES: [RouteSlice];
+pub(crate) static ROUTE_TABLE: LazyLock<Route> = LazyLock::new(build_route_table);
 
 fn build_route_table() -> Route {
     let mut route_table = Route::default();
