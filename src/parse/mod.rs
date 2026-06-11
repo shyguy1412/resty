@@ -12,7 +12,7 @@ pub enum HttpMethod {
     PUT,
     POST,
     DELETE,
-    OPTION,
+    OPTIONS,
     TRACE,
     INVALID,
 }
@@ -25,7 +25,7 @@ impl From<&str> for HttpMethod {
             "PUT" => PUT,
             "POST" => POST,
             "DELETE" => DELETE,
-            "OPTION" => OPTION,
+            "OPTIONS" => OPTIONS,
             "TRACE" => TRACE,
             _ => INVALID,
         }

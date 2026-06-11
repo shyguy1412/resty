@@ -7,7 +7,7 @@ use std::{
 
 use proc_macro::TokenStream;
 use quote::{ToTokens, format_ident};
-use syn::parse_macro_input;
+use syn::{Expr, parse_macro_input};
 
 static BASE_PATH: OnceLock<PathBuf> = OnceLock::new();
 
@@ -89,29 +89,60 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
     let endpoint_fn = parse_macro_input!(body as syn::ItemFn);
 
     let args = parse_macro_input!(args with syn::punctuated::Punctuated<syn::Meta, syn::token::Comma>::parse_terminated);
-    let args = match args
-        .iter()
-        .map(|meta| meta.require_name_value())
-        .collect::<Result<Vec<_>, _>>()
-    {
-        Ok(args) => args,
-        Err(err) => panic!("{err}"),
-    };
+    let args: Vec<_> = args
+        .into_iter()
+        .filter_map(|meta| match meta {
+            syn::Meta::Path(..) => None,
+            syn::Meta::List(syn::MetaList { tokens, path, .. }) => Some((
+                path.to_token_stream().to_string(),
+                parse_meta_list(tokens.into()),
+            )),
+            syn::Meta::NameValue(meta_name_value) => Some((
+                meta_name_value.path.to_token_stream().to_string(),
+                vec![meta_name_value.value.clone()],
+            )),
+        })
+        .collect();
 
-    let method = args
+    let methods = &args
         .iter()
-        .find(|meta| meta.path.to_token_stream().to_string() == "Method")
+        .find(|meta| meta.0 == "Method")
         .expect("Missing required argument: Method")
-        .value
-        .to_token_stream()
-        .to_string();
-    let method = format_ident!("{method}");
+        .1;
 
-    let fn_ident = &endpoint_fn.sig.ident;
+    let static_headers: &Vec<syn::Expr> = &args
+        .iter()
+        .filter_map(|(key, value)| match key == "Header" {
+            true => Some(syn::parse(quote::quote! {(#(#value),*)}.into()).ok()?),
+            false => None,
+        })
+        .collect();
+
+    methods
+        .iter()
+        .map(|method| method.to_token_stream().to_string())
+        .map(|method| format_ident!("{method}"))
+        .map(|method| generate_endpoint(&endpoint_fn, &method, static_headers))
+        .collect()
+}
+
+fn parse_meta_list(tokens: TokenStream) -> Vec<Expr> {
+    let parser = syn::punctuated::Punctuated::<syn::Expr, syn::token::Comma>::parse_terminated;
+    let list = syn::parse::Parser::parse(parser, tokens)
+        .map(|l| l.into_iter().collect())
+        .unwrap_or(vec![]);
+
+    list
+}
+
+fn generate_endpoint(
+    endpoint_fn: &syn::ItemFn,
+    method: &syn::Ident,
+    static_headers: &Vec<Expr>,
+) -> TokenStream {
     let generics = &endpoint_fn.sig.generics;
+    let fn_ident = &endpoint_fn.sig.ident;
     let lifetime = generics.lifetimes().take(1).collect::<Vec<_>>()[0];
-
-    let slice_ident = format_ident!("{fn_ident}_route");
 
     let span = proc_macro::Span::call_site();
     let source_file = span.local_file();
@@ -124,12 +155,15 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
         .unwrap_or("<error endpoint>")
         .split("/");
 
+    let slice_ident = format_ident!("__{fn_ident}_{method}_route");
+    let endpoint_ident = format_ident!("__{fn_ident}_{method}");
+
     quote::quote! {
         use ::resty::__private::*;
         #[linkme::distributed_slice(::resty::ROUTES)]
         #[linkme(crate = linkme)]
-        static #slice_ident: ::resty::RouteSlice =(&[#(#endpoint),*], &#fn_ident, ::resty::HttpMethod::#method);
-        pub fn #fn_ident #generics (data: &#lifetime mut ::resty::HandlerData<#lifetime>)
+        static #slice_ident: ::resty::RouteSlice =(&[#(#endpoint),*], &#endpoint_ident, ::resty::HttpMethod::#method);
+        pub fn #endpoint_ident #generics (data: &#lifetime mut ::resty::HandlerData<#lifetime>)
         -> ::resty::EndpointTask<#lifetime> {
             #endpoint_fn;
             Box::pin(async move {
@@ -137,7 +171,10 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
                     todo!("Handle parsing errors")
                 };
 
-                let mut response = Response::new(data.stream.clone());
+                const static_headers :&[(&str, &str)] = &[#(#static_headers),*];
+
+                let mut response = Response::new(data.stream.clone(), static_headers);
+
                 #fn_ident(&mut request, &mut response).await;
                 let _ = data.stream.close().await;
             })
