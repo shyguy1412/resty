@@ -2,7 +2,7 @@ use std::net::SocketAddrV4;
 
 use smol::{io::AsyncWriteExt, net::TcpListener};
 
-use crate::routing::HandlerData;
+use crate::routing::{FALLBACK, HandlerData};
 
 pub type EndpointTask<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Send>>;
 
@@ -61,7 +61,10 @@ async fn handle_stream(mut stream: smol::net::TcpStream) -> Result<(), Box<dyn s
     let mut request = httparse::Request::new(headers);
 
     if let Err(..) = request.parse(buffer) {
-        todo!("Handle parsing errors");
+        let _ = stream
+            .write(b"HTTP/1.1 403 Malformed Request Headers\r\n")
+            .await;
+        return Ok(());
     };
 
     let Some((handler, path_params)) = request
@@ -69,8 +72,9 @@ async fn handle_stream(mut stream: smol::net::TcpStream) -> Result<(), Box<dyn s
         .and_then(|route| crate::routing::ROUTE_TABLE.route(route))
         .zip(request.method.map(Into::into))
         .and_then(|((route, params), method)| Some((route.endpoints.get(&method)?, params)))
+        .or_else(|| FALLBACK.get(0).map(|fallback| (fallback, vec![])))
     else {
-        let _ = stream.write("404".as_bytes()).await;
+        let _ = stream.write(b"HTTP/1.1 404 Not Found\r\n").await;
         return Ok(());
     };
 

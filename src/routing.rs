@@ -52,6 +52,10 @@ pub type RouteSlice = (
 pub static ROUTES: [RouteSlice];
 pub(crate) static ROUTE_TABLE: LazyLock<Route> = LazyLock::new(build_route_table);
 
+#[doc(hidden)]
+#[linkme::distributed_slice]
+pub static FALLBACK: [&'static Handler];
+
 pub struct HandlerData<'a> {
     pub request: httparse::Request<'a, 'a>,
     pub path_params: Vec<&'a str>,

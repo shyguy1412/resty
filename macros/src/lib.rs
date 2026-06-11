@@ -1,3 +1,6 @@
+mod parse;
+use parse::*;
+
 use std::{
     fs::{self, DirEntry},
     io,
@@ -7,7 +10,7 @@ use std::{
 
 use proc_macro::TokenStream;
 use quote::{ToTokens, format_ident};
-use syn::{Expr, parse_macro_input};
+use syn::parse_macro_input;
 
 static BASE_PATH: OnceLock<PathBuf> = OnceLock::new();
 
@@ -85,64 +88,52 @@ pub fn api_module(body: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
+pub fn fallback(args: TokenStream, body: TokenStream) -> TokenStream {
+    let endpoint_fn = parse_macro_input!(body as syn::ItemFn);
+
+    let args = parse_args(args);
+    let static_headers: Vec<syn::Expr> = parse_static_headers(&args);
+    let handler = generate_handler(
+        &endpoint_fn,
+        &format_ident!("__FALLBACK_HANDLER"),
+        &static_headers,
+    );
+    let handler = parse_macro_input!(handler as syn::ItemFn);
+
+    quote::quote! {
+        use ::resty::__private::*;
+        #[linkme::distributed_slice(::resty::FALLBACK)]
+        #[linkme(crate = linkme)]
+        static __FALLBACK_HANDLER_SLICE: &'static ::resty::Handler = &__FALLBACK_HANDLER;
+
+        #handler
+
+    }
+    .into()
+}
+
+#[proc_macro_attribute]
 pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
     let endpoint_fn = parse_macro_input!(body as syn::ItemFn);
 
-    let args = parse_macro_input!(args with syn::punctuated::Punctuated<syn::Meta, syn::token::Comma>::parse_terminated);
-    let args: Vec<_> = args
-        .into_iter()
-        .filter_map(|meta| match meta {
-            syn::Meta::Path(..) => None,
-            syn::Meta::List(syn::MetaList { tokens, path, .. }) => Some((
-                path.to_token_stream().to_string(),
-                parse_meta_list(tokens.into()),
-            )),
-            syn::Meta::NameValue(meta_name_value) => Some((
-                meta_name_value.path.to_token_stream().to_string(),
-                vec![meta_name_value.value.clone()],
-            )),
-        })
-        .collect();
-
-    let methods = &args
-        .iter()
-        .find(|meta| meta.0 == "Method")
-        .expect("Missing required argument: Method")
-        .1;
-
-    let static_headers: &Vec<syn::Expr> = &args
-        .iter()
-        .filter_map(|(key, value)| match key == "Header" {
-            true => Some(syn::parse(quote::quote! {(#(#value),*)}.into()).ok()?),
-            false => None,
-        })
-        .collect();
+    let args = parse_args(args);
+    let methods = parse_methods(&args);
+    let static_headers: Vec<syn::Expr> = parse_static_headers(&args);
 
     methods
         .iter()
         .map(|method| method.to_token_stream().to_string())
         .map(|method| format_ident!("{method}"))
-        .map(|method| generate_endpoint(&endpoint_fn, &method, static_headers))
+        .map(|method| generate_endpoint(&endpoint_fn, &method, &static_headers))
         .collect()
-}
-
-fn parse_meta_list(tokens: TokenStream) -> Vec<Expr> {
-    let parser = syn::punctuated::Punctuated::<syn::Expr, syn::token::Comma>::parse_terminated;
-    let list = syn::parse::Parser::parse(parser, tokens)
-        .map(|l| l.into_iter().collect())
-        .unwrap_or(vec![]);
-
-    list
 }
 
 fn generate_endpoint(
     endpoint_fn: &syn::ItemFn,
     method: &syn::Ident,
-    static_headers: &Vec<Expr>,
+    static_headers: &Vec<syn::Expr>,
 ) -> TokenStream {
-    let generics = &endpoint_fn.sig.generics;
     let fn_ident = &endpoint_fn.sig.ident;
-    let lifetime = generics.lifetimes().take(1).collect::<Vec<_>>()[0];
 
     let span = proc_macro::Span::call_site();
     let source_file = span.local_file();
@@ -156,31 +147,54 @@ fn generate_endpoint(
         .split("/");
 
     let slice_ident = format_ident!("__{fn_ident}_{method}_route");
-    let endpoint_ident = format_ident!("__{fn_ident}_{method}");
+
+    let handler_ident = format_ident!("__{fn_ident}_{method}");
+    let handler = generate_handler(endpoint_fn, &handler_ident, static_headers);
+    let handler = parse_macro_input!(handler as syn::ItemFn);
 
     quote::quote! {
         use ::resty::__private::*;
         #[linkme::distributed_slice(::resty::ROUTES)]
         #[linkme(crate = linkme)]
-        static #slice_ident: ::resty::RouteSlice =(&[#(#endpoint),*], &#endpoint_ident, ::resty::HttpMethod::#method);
-        pub fn #endpoint_ident #generics (data: &#lifetime mut ::resty::HandlerData<#lifetime>)
+        static #slice_ident: ::resty::RouteSlice =(&[#(#endpoint),*], &#handler_ident, ::resty::HttpMethod::#method);
+        #handler
+    }
+    .into()
+}
+
+fn generate_handler(
+    endpoint_fn: &syn::ItemFn,
+    handler_ident: &syn::Ident,
+    static_headers: &Vec<syn::Expr>,
+) -> TokenStream {
+    let generics = &endpoint_fn.sig.generics;
+    let fn_ident = &endpoint_fn.sig.ident;
+    let lifetime = generics
+        .lifetimes()
+        .nth(0)
+        .expect("Handler function is missing a lifetime parameter");
+
+    quote::quote! {
+        pub fn #handler_ident #generics (data: &#lifetime mut ::resty::HandlerData<#lifetime>)
         -> ::resty::EndpointTask<#lifetime> {
+            use ::resty::__private::*;
             #endpoint_fn;
             Box::pin(async move {
-                let Some(mut request) = Request::new(&data.request, &data.path_params, data.stream.clone()).await else {
+                let Some(mut request) = ::resty::Request::new(&data.request, &data.path_params, data.stream.clone()).await else {
                     todo!("Handle parsing errors")
                 };
 
                 const static_headers :&[(&str, &str)] = &[#(#static_headers),*];
 
-                let mut response = Response::new(data.stream.clone(), static_headers);
+                let mut response = ::resty::Response::new(data.stream.clone(), static_headers);
 
                 #fn_ident(&mut request, &mut response).await;
+
+                use smol::io::AsyncWriteExt;
                 let _ = data.stream.close().await;
             })
         }
-    }
-    .into()
+    }.into()
 }
 
 #[proc_macro_derive(Serialize, attributes(serializer))]
@@ -203,9 +217,10 @@ pub fn derive_resty_serialize(input: TokenStream) -> TokenStream {
     let serializer = parse_macro_input!(serializer_tokens as syn::Path);
 
     let ident = ast.ident;
+    let generics = ast.generics;
 
     quote::quote! {
-    impl ::resty::Serialize for #ident {
+    impl #generics ::resty::Serialize for #ident #generics {
         fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
             #serializer(self)
         }
@@ -232,10 +247,12 @@ pub fn derive_resty_deserialize(input: TokenStream) -> TokenStream {
         .into();
 
     let deserializer = parse_macro_input!(deserializer_tokens as syn::Path);
+
     let ident = ast.ident;
+    let generics = ast.generics;
 
     quote::quote! {
-    impl ::resty::Deserialize for #ident {
+    impl #generics ::resty::Deserialize for #ident #generics {
         fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
             #deserializer(data)
         }
