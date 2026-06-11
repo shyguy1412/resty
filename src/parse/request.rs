@@ -6,6 +6,8 @@ use std::{
 use smol::io::AsyncReadExt;
 use url::Url;
 
+use crate::parse::parse_cookies;
+
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
     MissingContentLength,
@@ -30,32 +32,22 @@ impl std::fmt::Display for Error {
 }
 
 pub struct Request<'a, B = ()> {
+    pub headers: &'a [httparse::Header<'a>],
+    pub url: Url,
+    pub cookies: Vec<(&'a str, &'a str)>,
+    pub path_params: &'a Vec<&'a str>,
     pub method: &'a str,
     pub version: u8,
-    pub headers: &'a mut [httparse::Header<'a>],
-    pub body: Result<Box<B>, Error>,
-    pub url: Url,
-    pub path_params: Vec<&'a str>,
+    body: Option<Box<Result<B, Error>>>,
     readable: std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>,
 }
 
 impl<'a, B: Deserialize> Request<'a, B> {
     pub async fn new(
-        request: httparse::Request<'a, 'a>,
-        path_params: Vec<&'a str>,
-        mut stream: smol::net::TcpStream,
+        request: &'a httparse::Request<'a, 'a>,
+        path_params: &'a Vec<&'a str>,
+        stream: smol::net::TcpStream,
     ) -> Option<Self> {
-        let Some(data) = request
-            .method
-            .zip(request.path)
-            .zip(request.version)
-            .map(|((a, b), c)| (a, b, c))
-        else {
-            return None;
-        };
-
-        let body = body(&request, &mut stream).await;
-
         let host = request
             .headers
             .iter()
@@ -65,18 +57,55 @@ impl<'a, B: Deserialize> Request<'a, B> {
             })
             .unwrap_or("localhost");
 
-        let url =
-            Url::parse(&format!("http://{host}{}", data.1)).expect("todo: handle malformed url");
+        let url = Url::parse(&format!("http://{host}{}", request.path?)).ok()?;
+
+        let cookies = parse_cookies(request.headers);
 
         Some(Self {
-            method: data.0,
+            method: request.method?,
             url,
-            version: data.2,
+            cookies,
+            version: request.version?,
             headers: request.headers,
             readable: stream.boxed_reader(),
             path_params,
-            body,
+            body: None,
         })
+    }
+
+    pub async fn body(&mut self) -> &Result<B, Error> {
+        if let Some(ref body) = self.body {
+            return body.as_ref();
+        }
+
+        let Some(content_length) = self
+            .headers
+            .iter()
+            .find(|h| h.name == "Content-Length")
+            .map(|h| h.value)
+        else {
+            return &Err(Error::MissingContentLength);
+        };
+
+        let Some(bytes) = str::from_utf8(content_length)
+            .ok()
+            .and_then(|content_length| usize::from_str_radix(content_length, 10).ok())
+        else {
+            return &Err(Error::InvalidContentLength);
+        };
+
+        let mut vec = vec![0; bytes];
+
+        let _ = self.read_exact(&mut vec).await;
+
+        let body = Box::new(B::deserialize(&vec).map_err(|_| Error::ParseError));
+
+        self.body.replace(body);
+
+        match self.body {
+            Some(ref b) => b,
+            None => unreachable!(),
+        }
     }
 }
 
@@ -92,35 +121,6 @@ impl<B> DerefMut for Request<'_, B> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.readable
     }
-}
-
-pub async fn body<B: Deserialize>(
-    req: &httparse::Request<'_, '_>,
-    stream: &mut smol::net::TcpStream,
-) -> Result<Box<B>, Error> {
-    let Some(content_length) = req
-        .headers
-        .iter()
-        .find(|h| h.name == "Content-Length")
-        .map(|h| h.value)
-    else {
-        return Err(Error::MissingContentLength);
-    };
-
-    let Some(bytes) = str::from_utf8(content_length)
-        .ok()
-        .and_then(|content_length| usize::from_str_radix(content_length, 10).ok())
-    else {
-        return Err(Error::InvalidContentLength);
-    };
-
-    let mut vec = vec![0; bytes];
-
-    let _ = stream.read_exact(&mut vec).await;
-
-    B::deserialize(&vec)
-        .map_err(|_| Error::ParseError)
-        .map(Box::new)
 }
 
 pub trait Deserialize

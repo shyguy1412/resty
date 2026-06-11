@@ -39,7 +39,10 @@ impl std::fmt::Display for HttpMethod {
 }
 
 #[inline(always)]
-pub async fn read_header(stream: &mut TcpStream, buff: &mut Vec<u8>) -> std::io::Result<usize> {
+pub(crate) async fn read_header(
+    stream: &mut TcpStream,
+    buff: &mut Vec<u8>,
+) -> std::io::Result<usize> {
     let bytes = &mut stream.bytes();
     let mut header_count = usize::MAX; //adjust for overcounting
 
@@ -59,4 +62,17 @@ pub async fn read_header(stream: &mut TcpStream, buff: &mut Vec<u8>) -> std::io:
         }
     }
     Ok(header_count)
+}
+
+#[inline(always)]
+pub(crate) fn parse_cookies<'a>(headers: &'a [httparse::Header]) -> Vec<(&'a str, &'a str)> {
+    headers
+        .iter()
+        .filter_map(|h| match h.name == "Cookie" {
+            true => str::from_utf8(h.value).ok(),
+            false => None,
+        })
+        .flat_map(|value| value.split("; "))
+        .filter_map(|cookie| cookie.split_once("="))
+        .collect()
 }

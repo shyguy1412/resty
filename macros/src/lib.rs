@@ -129,16 +129,17 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
         #[linkme::distributed_slice(::resty::ROUTES)]
         #[linkme(crate = linkme)]
         static #slice_ident: ::resty::RouteSlice =(&[#(#endpoint),*], &#fn_ident, ::resty::HttpMethod::#method);
-        pub fn #fn_ident #generics (data: ::resty::HandlerData<#lifetime>)
+        pub fn #fn_ident #generics (data: &#lifetime mut ::resty::HandlerData<#lifetime>)
         -> ::resty::EndpointTask<#lifetime> {
             #endpoint_fn;
             Box::pin(async move {
-                let Some(request) = Request::new(data.request, data.path_params, data.stream.clone()).await else {
+                let Some(mut request) = Request::new(&data.request, &data.path_params, data.stream.clone()).await else {
                     todo!("Handle parsing errors")
                 };
 
-                let response = Response::new(data.stream.clone());
-                #fn_ident(request, response).await;
+                let mut response = Response::new(data.stream.clone());
+                #fn_ident(&mut request, &mut response).await;
+                let _ = data.stream.close().await;
             })
         }
     }
@@ -168,7 +169,7 @@ pub fn derive_resty_serialize(input: TokenStream) -> TokenStream {
 
     quote::quote! {
     impl ::resty::Serialize for #ident {
-        fn serialize(self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
             #serializer(self)
         }
     }

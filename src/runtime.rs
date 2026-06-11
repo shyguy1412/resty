@@ -44,7 +44,8 @@ async fn accept_connections(addr: SocketAddrV4) -> () {
 
         let task = async move {
             let _ = handle_stream(stream).await;
-            println!("Request handled in {}ms", time.elapsed().as_millis());
+            println!("Request handled in {}µs", time.elapsed().as_micros());
+            // println!("Request handled in {}ms", time.elapsed().as_millis());
         };
 
         EXECUTOR.spawn(task).detach();
@@ -73,9 +74,7 @@ async fn handle_stream(mut stream: smol::net::TcpStream) -> Result<(), Box<dyn s
         return Ok(());
     };
 
-    println!("{path_params:?}");
-
-    handler(HandlerData {
+    handler(&mut HandlerData {
         request,
         path_params,
         stream,

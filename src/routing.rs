@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::LazyLock};
 
-pub type Handler = dyn for<'a> Fn(HandlerData<'a>) -> crate::EndpointTask<'a> + Sync;
+pub type Handler = dyn for<'a> Fn(&'a mut HandlerData<'a>) -> crate::EndpointTask<'a> + Sync;
 
 #[derive(Default)]
 pub struct Route {

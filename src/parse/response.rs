@@ -93,7 +93,7 @@ impl<B> Response<B> {
 }
 
 impl<B: Serialize> Response<B> {
-    pub async fn send(&mut self, data: B) -> Result<(), Error> {
+    pub async fn send(&mut self, data: &B) -> Result<(), Error> {
         if self.state == ResponseState::Body {
             self.status(200, "OK").await;
         }
@@ -113,5 +113,5 @@ impl<B: Serialize> Response<B> {
 }
 
 pub trait Serialize {
-    fn serialize(self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
+    fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
 }
