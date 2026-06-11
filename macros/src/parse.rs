@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use proc_macro::TokenStream;
 use quote::ToTokens;
 
@@ -31,6 +33,22 @@ pub fn parse_methods(args: &Vec<(String, Vec<syn::Expr>)>) -> &Vec<syn::Expr> {
         .find(|meta| meta.0 == "Method")
         .expect("Missing required argument: Method")
         .1
+}
+
+pub fn parse_path_override(args: &Vec<(String, Vec<syn::Expr>)>) -> Option<String> {
+    args.iter()
+        .find_map(|meta| match meta.0 == "Path" {
+            true => Some(meta.1.get(0)?),
+            false => None,
+        })
+        .and_then(|expr| match expr {
+            syn::Expr::Lit(expr_lit) => Some(&expr_lit.lit),
+            _ => None,
+        })
+        .and_then(|lit| match lit {
+            syn::Lit::Str(lit_str) => Some(lit_str.value()),
+            _ => None,
+        })
 }
 
 pub fn parse_static_headers(args: &Vec<(String, Vec<syn::Expr>)>) -> Vec<syn::Expr> {

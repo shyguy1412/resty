@@ -119,12 +119,20 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
     let args = parse_args(args);
     let methods = parse_methods(&args);
     let static_headers: Vec<syn::Expr> = parse_static_headers(&args);
+    let path = parse_path_override(&args);
 
     methods
         .iter()
         .map(|method| method.to_token_stream().to_string())
         .map(|method| format_ident!("{method}"))
-        .map(|method| generate_endpoint(&endpoint_fn, &method, &static_headers))
+        .map(|method| {
+            generate_endpoint(
+                &endpoint_fn,
+                &method,
+                &static_headers,
+                &path.as_ref().map(|s| s.as_str()),
+            )
+        })
         .collect()
 }
 
@@ -132,18 +140,32 @@ fn generate_endpoint(
     endpoint_fn: &syn::ItemFn,
     method: &syn::Ident,
     static_headers: &Vec<syn::Expr>,
+    path: &Option<&str>,
 ) -> TokenStream {
     let fn_ident = &endpoint_fn.sig.ident;
 
     let span = proc_macro::Span::call_site();
     let source_file = span.local_file();
-    let endpoint = source_file
-        .as_ref()
-        .and_then(|file| file.strip_prefix(BASE_PATH.get().unwrap()).ok())
-        .and_then(|path| path.to_str())
-        .and_then(|path| path.strip_suffix(".rs").or(Some(path)))
-        .and_then(|path| path.strip_suffix("mod").or(Some(path)))
-        .unwrap_or("<error endpoint>")
+    let endpoint_from_file = || {
+        source_file
+            .as_ref()
+            .and_then(|file| file.strip_prefix(BASE_PATH.get()?).ok())
+            .and_then(|path| path.to_str())
+            .and_then(|path| path.strip_suffix(".rs").or(Some(path)))
+            .and_then(|path| path.strip_suffix("mod").or(Some(path)))
+    };
+
+    let endpoint = path
+        .or_else(endpoint_from_file)
+        .and_then(|p| p.strip_prefix("/").or(Some(p)))
+        .unwrap_or_else(|| {
+            if let Ok(var) = std::env::var("RUST_ANALYZER")
+                && var == "true"
+            {
+                return "<rust-analyzer has not yet implemented Span::local_file>";
+            }
+            panic!("Could not determine endpoint path")
+        }) //this should only be reachable to rust-analyzer since it does not implement local_file
         .split("/");
 
     let slice_ident = format_ident!("__{fn_ident}_{method}_route");
