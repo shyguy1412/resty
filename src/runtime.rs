@@ -2,15 +2,18 @@ use std::net::SocketAddrV4;
 
 use smol::{io::AsyncWriteExt, net::TcpListener};
 
-use crate::routing::{FALLBACK, HandlerData};
+use crate::{
+    Router,
+    routing::{FALLBACK, HandlerData},
+};
 
 pub type EndpointTask<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Send>>;
 
 static EXECUTOR: smol::Executor = smol::Executor::new();
 
 #[inline(always)]
-pub fn bind(addr: SocketAddrV4) -> () {
-    EXECUTOR.spawn(accept_connections(addr)).detach();
+pub fn bind(addr: SocketAddrV4, router: &'static Router) -> () {
+    EXECUTOR.spawn(accept_connections(addr, router)).detach();
 }
 
 #[allow(unreachable_code)]
@@ -26,7 +29,7 @@ pub fn spawn_thread() -> std::thread::JoinHandle<std::convert::Infallible> {
     })
 }
 
-async fn accept_connections(addr: SocketAddrV4) -> () {
+async fn accept_connections(addr: SocketAddrV4, router: &'static Router) -> () {
     let socket = match TcpListener::bind(addr).await {
         Ok(socket) => socket,
         Err(err) => panic!("{err:?}"),
@@ -38,21 +41,23 @@ async fn accept_connections(addr: SocketAddrV4) -> () {
             continue;
         };
 
-        println!("Connection accepted");
+        // println!("Connection accepted");
 
-        let time = std::time::Instant::now();
-
-        let task = async move {
-            let _ = handle_stream(stream).await;
+        let task = async {
+            let time = std::time::Instant::now();
+            let _ = handle_stream(stream, router).await;
             println!("Request handled in {}µs", time.elapsed().as_micros());
-            // println!("Request handled in {}ms", time.elapsed().as_millis());
+            println!("Request handled in {}ms", time.elapsed().as_millis());
         };
 
         EXECUTOR.spawn(task).detach();
     }
 }
 
-async fn handle_stream(mut stream: smol::net::TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+async fn handle_stream(
+    mut stream: smol::net::TcpStream,
+    router: &Router,
+) -> Result<(), Box<dyn std::error::Error>> {
     let buffer = &mut Vec::with_capacity(4000);
     let header_count = crate::parse::read_header(&mut stream, buffer).await?;
     buffer.shrink_to_fit();
@@ -69,7 +74,7 @@ async fn handle_stream(mut stream: smol::net::TcpStream) -> Result<(), Box<dyn s
 
     let Some((handler, path_params)) = request
         .path
-        .and_then(|route| crate::routing::ROUTE_TABLE.route(route))
+        .and_then(|route| router.route(route))
         .zip(request.method.map(Into::into))
         .and_then(|((route, params), method)| Some((route.endpoints.get(&method)?, params)))
         .or_else(|| FALLBACK.get(0).map(|fallback| (fallback, vec![])))

@@ -7,7 +7,7 @@ mod runtime;
 pub use runtime::*;
 
 pub use resty_macros::*;
-pub use routing::{FALLBACK, Handler, HandlerData, ROUTES, RouteSlice};
+pub use routing::*;
 
 #[doc(hidden)]
 pub mod __private {

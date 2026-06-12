@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use proc_macro::TokenStream;
 use quote::ToTokens;
 
