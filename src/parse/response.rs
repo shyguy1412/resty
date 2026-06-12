@@ -86,9 +86,9 @@ impl<B> Response<B> {
             .write(format!("HTTP/1.1 {status} {reason}\r\n").as_bytes())
             .await;
 
-        Box::pin(self.headers(&[])).await?;
-
         self.state = ResponseState::StaticHeaders;
+
+        Box::pin(self.headers(&[])).await?;
 
         Ok(status)
     }
