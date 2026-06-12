@@ -49,7 +49,6 @@ impl Router {
         let mut route = self;
 
         while let Some(current_segment) = segments.next() {
-            println!("{current_segment};{:?}", route.segments.keys());
             let next_route = match route.segments.get(current_segment) {
                 Some(route) => route,
                 None => match route.segments.get("@param") {

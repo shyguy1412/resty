@@ -44,10 +44,10 @@ async fn accept_connections(addr: SocketAddrV4, router: &'static Router) -> () {
         // println!("Connection accepted");
 
         let task = async {
-            let time = std::time::Instant::now();
+            // let time = std::time::Instant::now();
             let _ = handle_stream(stream, router).await;
-            println!("Request handled in {}µs", time.elapsed().as_micros());
-            println!("Request handled in {}ms", time.elapsed().as_millis());
+            // println!("Request handled in {}µs", time.elapsed().as_micros());
+            // println!("Request handled in {}ms", time.elapsed().as_millis());
         };
 
         EXECUTOR.spawn(task).detach();

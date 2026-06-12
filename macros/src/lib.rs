@@ -42,8 +42,62 @@ fn error_to_compile_error<E: std::error::Error>(span: proc_macro2::Span, err: E)
 }
 
 #[proc_macro_attribute]
-pub fn use_manual_routing(args: TokenStream, body: TokenStream) -> TokenStream {
-    quote::quote! {}.into()
+pub fn use_manual_routing(_: TokenStream, body: TokenStream) -> TokenStream {
+    let mut body: Vec<TokenTree> = body.into_iter().collect();
+    let Some(static_decl_ident) = body.get(1).and_then(|tt| match tt {
+        TokenTree::Ident(ident) => Some(proc_macro2::Ident::new(
+            &ident.to_string(),
+            ident.span().into(),
+        )),
+        _ => None,
+    }) else {
+        return syn::Error::new(
+            body.get(1)
+                .or(body.get(0))
+                .expect("Must have input")
+                .span()
+                .into(),
+            "Expected Ident",
+        )
+        .into_compile_error()
+        .into();
+    };
+    let router_ident = format_ident!("__RESTY__ROUTER_{static_decl_ident}");
+
+    if let Some(last) = body.last()
+        && last.to_string() != ";"
+    {
+        return syn::Error::new(last.span().into(), "Expected a ;")
+            .into_compile_error()
+            .into();
+    }
+
+    body.pop();
+
+    let mut stream = TokenStream::new();
+
+    stream.extend(body);
+    stream.extend(Into::<TokenStream>::into(
+        quote::quote! {= ::std::sync::LazyLock::new(||::resty::Router::new(&#router_ident));},
+    ));
+    let static_decl = parse_macro_input!(stream as syn::ItemStatic);
+
+    quote::quote! {
+        #[allow(non_snake_case)]
+        mod #static_decl_ident {
+            use ::resty::__private::*;
+            #[doc(hidden)]
+            #[linkme::distributed_slice]
+            #[linkme(crate = linkme)]
+            pub static #router_ident: [::resty::RouteSlice];
+            use #router_ident as __RESTY__ROUTER;
+
+
+        }
+        use #static_decl_ident::#router_ident;
+        #static_decl
+    }
+    .into()
 }
 
 #[proc_macro_attribute]
@@ -69,7 +123,7 @@ pub fn use_path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
         .into_compile_error()
         .into();
     };
-    let router_ident = format_ident!("{static_decl_ident}__RESTY__ROUTER");
+    let router_ident = format_ident!("__RESTY__ROUTER_{static_decl_ident}");
 
     if let Some(last) = body.last()
         && last.to_string() != ";"
@@ -195,6 +249,10 @@ pub fn fallback(args: TokenStream, body: TokenStream) -> TokenStream {
     .into()
 }
 
+// fn expr_to_router(expr: &syn::Path) -> syn::Path {
+//     let
+// }
+
 #[proc_macro_attribute]
 pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
     let endpoint_fn = parse_macro_input!(body as syn::ItemFn);
@@ -205,8 +263,19 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
     let path = parse_path_override(&args);
 
     let router = args.iter().find_map(|a| match a.0 == "Router" {
-        true => Some(&a.1[0]),
+        true => Some(a.1.get(0)?),
         false => None,
+    });
+    let mut router = match router.map(|e| e.into_token_stream().into()) {
+        Some(expr) => Some(parse_macro_input!(expr as syn::Path)),
+        None => None,
+    };
+
+    router.as_mut().and_then(|path| {
+        path.segments
+            .iter_mut()
+            .last()
+            .map(|seg| seg.ident = format_ident!("__RESTY__ROUTER_{}", &seg.ident))
     });
 
     methods
@@ -219,7 +288,7 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
                 &method,
                 &static_headers,
                 &path.as_ref().map(|s| s.as_str()),
-                &router,
+                &router.as_ref(),
             )
         })
         .collect()
@@ -230,7 +299,7 @@ fn generate_endpoint(
     method: &syn::Ident,
     static_headers: &Vec<syn::Expr>,
     path: &Option<&str>,
-    router: &Option<&syn::Expr>,
+    router: &Option<&syn::Path>,
 ) -> TokenStream {
     let fn_ident = &endpoint_fn.sig.ident;
 
@@ -248,13 +317,22 @@ fn generate_endpoint(
             .and_then(|path| path.to_str())
             .and_then(|path| path.strip_suffix(".rs").or(Some(path)))
             .and_then(|path| path.strip_suffix("mod").or(Some(path)))
+        //this should only be reachable to rust-analyzer since it does not implement local_file
     };
 
-    let endpoint = path
+    let endpoint = match path
         .or_else(endpoint_from_file)
         .and_then(|p| p.strip_prefix("/").or(Some(p)))
-        .unwrap_or("<rust-analyzer has not yet implemented Span::local_file>") //this should only be reachable to rust-analyzer since it does not implement local_file
-        .split("/");
+    {
+        Some(a) => a,
+        None => match source_file {
+            Some(_) => {
+                panic!("Can not determine endpoint route. Maybe you are missing a Path directive?")
+            }
+            None => "<rust-analyzer has not yet implemented Span::local_file>",
+        },
+    }
+    .split("/");
 
     let default_router = parse_str("super::__RESTY__ROUTER").ok();
     let router = router.clone().or(default_router.as_ref());
