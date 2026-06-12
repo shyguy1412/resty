@@ -280,8 +280,8 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
 
     methods
         .iter()
-        .map(|method| method.to_token_stream().to_string())
-        .map(|method| format_ident!("{method}"))
+        .map(|method| method.to_token_stream().into())
+        .filter_map(|method| syn::parse(method).ok())
         .map(|method| {
             generate_endpoint(
                 &endpoint_fn,
