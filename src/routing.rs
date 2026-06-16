@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::parse::{request::Readable, response::Writeable};
+
 pub type Handler = dyn for<'a> Fn(&'a mut HandlerData<'a>) -> crate::EndpointTask<'a> + Sync;
 
 #[derive(Default)]
@@ -81,5 +83,6 @@ pub static FALLBACK: [&'static Handler];
 pub struct HandlerData<'a> {
     pub request: httparse::Request<'a, 'a>,
     pub path_params: Vec<&'a str>,
-    pub stream: &'a mut smol::net::TcpStream,
+    pub readable: &'a mut Readable, // pub stream: &'a mut smol::net::TcpStream,
+    pub writeable: &'a mut Writeable, // pub stream: &'a mut smol::net::TcpStream,
 }

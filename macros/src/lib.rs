@@ -377,13 +377,13 @@ fn generate_handler(
             use ::resty::__private::*;
             #endpoint_fn;
             Box::pin(async move {
-                let Some(mut request) = ::resty::Request::new(&data.request, &data.path_params, data.stream.clone()).await else {
+                let Some(mut request) = ::resty::Request::new(&data.request, &data.path_params, data.readable).await else {
                     todo!("Handle parsing errors")
                 };
 
                 const static_headers :&[(&str, &str)] = &[#(#static_headers),*];
 
-                let mut response = ::resty::Response::new(data.stream.clone(), static_headers);
+                let mut response = ::resty::Response::new(data.writeable, static_headers);
 
                 #fn_ident(&mut request, &mut response).await;
             })

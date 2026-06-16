@@ -31,6 +31,8 @@ impl std::fmt::Display for Error {
     }
 }
 
+pub type Readable = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>;
+
 pub struct Request<'a, B = ()> {
     pub headers: &'a [httparse::Header<'a>],
     pub url: Url,
@@ -39,21 +41,23 @@ pub struct Request<'a, B = ()> {
     pub method: &'a str,
     pub version: u8,
     body: Option<Box<Result<B, Error>>>,
-    readable: std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>,
+    readable: &'a mut Readable,
 }
 
 impl<'a, B: Deserialize> Request<'a, B> {
     pub async fn new(
         request: &'a httparse::Request<'a, 'a>,
         path_params: &'a Vec<&'a str>,
-        stream: smol::net::TcpStream,
+        readable: &'a mut Readable,
     ) -> Option<Self> {
         let host = request
             .headers
             .iter()
-            .find_map(|httparse::Header { name, value }| match *name == "Host" {
-                true => from_utf8(value).ok(),
-                false => None,
+            .find_map(|httparse::Header { name, value }| {
+                match name.to_ascii_lowercase() == "host" {
+                    true => from_utf8(value).ok(),
+                    false => None,
+                }
             })
             .unwrap_or("localhost");
 
@@ -67,7 +71,7 @@ impl<'a, B: Deserialize> Request<'a, B> {
             cookies,
             version: request.version?,
             headers: request.headers,
-            readable: stream.boxed_reader(),
+            readable,
             path_params,
             body: None,
         })
@@ -81,7 +85,7 @@ impl<'a, B: Deserialize> Request<'a, B> {
         let Some(content_length) = self
             .headers
             .iter()
-            .find(|h| h.name == "Content-Length")
+            .find(|h| h.name.to_ascii_lowercase() == "content-length")
             .map(|h| h.value)
         else {
             return &Err(Error::MissingContentLength);

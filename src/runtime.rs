@@ -1,6 +1,9 @@
 use std::net::SocketAddrV4;
 
-use smol::{io::AsyncWriteExt, net::TcpListener};
+use smol::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::TcpListener,
+};
 
 use crate::{
     Router,
@@ -92,12 +95,35 @@ async fn handle_stream(mut stream: smol::net::TcpStream, router: &Router) -> () 
             return;
         };
 
+        let content_length = request.headers.iter().find_map(|h| {
+            match h.name.to_ascii_lowercase() == "content-length" {
+                true => u64::from_str_radix(str::from_utf8(h.value).ok()?, 10).ok(),
+                false => None,
+            }
+        });
+
+        let writeable = &mut stream.clone().boxed_writer();
+
+        let readable = &mut match content_length {
+            Some(value) => stream.clone().take(value).boxed_reader(),
+            None => stream.clone().boxed_reader(),
+        };
         handler(&mut HandlerData {
             request,
             path_params,
-            stream: &mut stream,
+            readable,
+            writeable,
         })
         .await;
+
+        //fully consume readable before moving on
+        if let Some(length) = content_length
+            && let Ok(1) = readable.read(&mut [0]).await
+        {
+            let _ = readable
+                .read_to_end(&mut vec![0; length as usize - 1])
+                .await;
+        }
 
         // println!("Request handled in {}µs", time.elapsed().as_micros());
     }

@@ -35,16 +35,18 @@ enum ResponseState {
     Done,
 }
 
-pub struct Response<B = ()> {
+pub type Writeable = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
+
+pub struct Response<'a, B = ()> {
     state: ResponseState,
     status: Option<u16>,
-    writeable: std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>,
+    writeable: &'a mut Writeable,
     static_headers: &'static [(&'static str, &'static str)],
     once: bool,
     body: PhantomData<B>,
 }
 
-impl<B> Deref for Response<B> {
+impl<B> Deref for Response<'_, B> {
     type Target = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
 
     fn deref(&self) -> &Self::Target {
@@ -52,21 +54,21 @@ impl<B> Deref for Response<B> {
     }
 }
 
-impl<B> DerefMut for Response<B> {
+impl<B> DerefMut for Response<'_, B> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.writeable
     }
 }
 
-impl<B> Response<B> {
+impl<'a, B> Response<'a, B> {
     pub fn new(
-        stream: smol::net::TcpStream,
+        writeable: &'a mut Writeable,
         static_headers: &'static [(&'static str, &'static str)],
     ) -> Self {
         Self {
             state: ResponseState::Status,
             status: None,
-            writeable: stream.boxed_writer(),
+            writeable,
             static_headers,
             body: PhantomData,
             once: false,
@@ -96,13 +98,12 @@ impl<B> Response<B> {
     }
 
     pub async fn headers(&mut self, headers: &[(&str, &str)]) -> Result<(), Error> {
-        if self.state == ResponseState::Body {
+        if self.state >= ResponseState::Body {
             return Err(Error::StateError);
         }
 
         if self.state == ResponseState::Status {
             self.status(200, "OK").await?;
-            self.state = ResponseState::StaticHeaders;
         };
 
         if self.state == ResponseState::StaticHeaders {
@@ -125,7 +126,7 @@ impl<B> Response<B> {
     }
 }
 
-impl<B: Serialize> Response<B> {
+impl<B: Serialize> Response<'_, B> {
     pub async fn send(&mut self, data: &B) -> Result<(), Error> {
         if self.state == ResponseState::Done {
             return Err(Error::StateError);
@@ -158,6 +159,20 @@ impl<B: Serialize> Response<B> {
         self.state = ResponseState::Done;
 
         Ok(())
+    }
+}
+
+impl<B> Drop for Response<'_, B> {
+    //ensure the response gets properly terminated
+    fn drop(&mut self) {
+        if self.state == ResponseState::Done {
+            return;
+        }
+        let _ = smol::block_on(async {
+            if let Ok(..) = self.headers(&[]).await {
+                let _ = self.writeable.write_all(b"\r\n").await;
+            };
+        });
     }
 }
 
