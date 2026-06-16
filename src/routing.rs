@@ -81,5 +81,5 @@ pub static FALLBACK: [&'static Handler];
 pub struct HandlerData<'a> {
     pub request: httparse::Request<'a, 'a>,
     pub path_params: Vec<&'a str>,
-    pub stream: smol::net::TcpStream,
+    pub stream: &'a mut smol::net::TcpStream,
 }

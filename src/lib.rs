@@ -1,5 +1,9 @@
 mod parse;
-pub use parse::{Deserialize, HttpMethod, Request, Response, Serialize};
+pub use parse::{
+    HttpMethod,
+    request::{Deserialize, Request},
+    response::{Response, Serialize},
+};
 
 mod routing;
 

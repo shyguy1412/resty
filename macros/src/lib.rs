@@ -386,9 +386,6 @@ fn generate_handler(
                 let mut response = ::resty::Response::new(data.stream.clone(), static_headers);
 
                 #fn_ident(&mut request, &mut response).await;
-
-                use smol::io::AsyncWriteExt;
-                let _ = data.stream.close().await;
             })
         }
     }.into()

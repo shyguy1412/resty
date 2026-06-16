@@ -3,10 +3,10 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Error {
     SerializeError,
-    WriteError,
+    WriteError(&'static str),
     StateError,
     InvalidStatus,
 }
@@ -17,7 +17,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::SerializeError => write!(f, "SerializeError"),
-            Error::WriteError => write!(f, "WriteError"),
+            Error::WriteError(e) => write!(f, "WriteError({e})"),
             Error::StateError => write!(f, "StateError"),
             Error::InvalidStatus => write!(f, "InvalidStatus"),
         }
@@ -40,6 +40,7 @@ pub struct Response<B = ()> {
     status: Option<u16>,
     writeable: std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>,
     static_headers: &'static [(&'static str, &'static str)],
+    once: bool,
     body: PhantomData<B>,
 }
 
@@ -68,6 +69,7 @@ impl<B> Response<B> {
             writeable: stream.boxed_writer(),
             static_headers,
             body: PhantomData,
+            once: false,
         }
     }
 
@@ -83,7 +85,7 @@ impl<B> Response<B> {
         self.status.replace(status);
 
         let _ = self
-            .write(format!("HTTP/1.1 {status} {reason}\r\n").as_bytes())
+            .write_all(format!("HTTP/1.1 {status} {reason}\r\n").as_bytes())
             .await;
 
         self.state = ResponseState::StaticHeaders;
@@ -109,14 +111,14 @@ impl<B> Response<B> {
         }
 
         for (name, value) in headers {
-            self.write(name.as_bytes())
-                .await
-                .map_err(|_| Error::WriteError)?;
-            self.write(b": ").await.map_err(|_| Error::WriteError)?;
-            self.write(value.as_bytes())
-                .await
-                .map_err(|_| Error::WriteError)?;
-            self.write(b"\r\n").await.map_err(|_| Error::WriteError)?;
+            if *name == "Connection" && *value == "close" {
+                self.once = true;
+            }
+            let header = format!("{name}: {value}\r\n").into_bytes();
+            self.write_all(&header).await.map_err(|e| {
+                println!("{e}");
+                Error::WriteError("Headers")
+            })?;
         }
 
         Ok(())
@@ -139,8 +141,19 @@ impl<B: Serialize> Response<B> {
 
         let data = data.serialize().map_err(|_| Error::SerializeError)?;
 
-        self.write(b"\r\n").await.map_err(|_| Error::WriteError)?;
-        self.write(&data).await.map_err(|_| Error::WriteError)?;
+        self.write_all(&format!("Content-Length: {}\r\n\r\n", data.len()).into_bytes())
+            .await
+            .map_err(|_| Error::WriteError("content length"))?;
+
+        self.write_all(&data)
+            .await
+            .map_err(|_| Error::WriteError("body"))?;
+
+        let _ = self.flush().await;
+
+        if self.once {
+            let _ = self.close().await;
+        }
 
         self.state = ResponseState::Done;
 
@@ -150,4 +163,10 @@ impl<B: Serialize> Response<B> {
 
 pub trait Serialize {
     fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
+}
+
+impl<T: Into<Vec<u8>> + Clone> Serialize for T {
+    fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        Ok(T::into(self.clone()))
+    }
 }

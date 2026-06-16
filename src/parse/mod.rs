@@ -1,8 +1,5 @@
-mod request;
-mod response;
-
-pub use request::*;
-pub use response::*;
+pub mod request;
+pub mod response;
 
 use smol::{io::AsyncReadExt, net::TcpStream, stream::StreamExt};
 
@@ -39,15 +36,11 @@ impl std::fmt::Display for HttpMethod {
 }
 
 #[inline(always)]
-pub(crate) async fn read_header(
-    stream: &mut TcpStream,
-    buff: &mut Vec<u8>,
-) -> std::io::Result<usize> {
+pub(crate) async fn read_headers(stream: &mut TcpStream, buff: &mut Vec<u8>) -> Option<usize> {
     let bytes = &mut stream.bytes();
-    let mut header_count = usize::MAX; //adjust for overcounting
-
-    while let Some(byte) = bytes.next().await {
-        buff.push(byte?);
+    let mut header_count: usize = 0; //adjust for overcounting
+    while let Some(Ok(byte)) = bytes.next().await {
+        buff.push(byte);
 
         if buff.len() < 4 {
             continue;
@@ -58,10 +51,10 @@ pub(crate) async fn read_header(
         }
 
         if buff[buff.len() - 4..] == *b"\r\n\r\n" {
-            break;
+            return Some(header_count);
         }
     }
-    Ok(header_count)
+    None
 }
 
 #[inline(always)]
