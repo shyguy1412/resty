@@ -37,16 +37,16 @@ enum ResponseState {
 
 pub type Writeable = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
 
-pub struct Response<'a, B = ()> {
+pub struct Response<'a, B = (), E = ()> {
     state: ResponseState,
-    status: Option<u16>,
     writeable: &'a mut Writeable,
     static_headers: &'static [(&'static str, &'static str)],
     once: bool,
     body: PhantomData<B>,
+    error: PhantomData<E>,
 }
 
-impl<B> Deref for Response<'_, B> {
+impl Deref for Response<'_> {
     type Target = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
 
     fn deref(&self) -> &Self::Target {
@@ -54,47 +54,42 @@ impl<B> Deref for Response<'_, B> {
     }
 }
 
-impl<B> DerefMut for Response<'_, B> {
+impl DerefMut for Response<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.writeable
     }
 }
 
-impl<'a, B> Response<'a, B> {
+impl<'a, B, E> Response<'a, B, E> {
     pub fn new(
         writeable: &'a mut Writeable,
         static_headers: &'static [(&'static str, &'static str)],
     ) -> Self {
         Self {
             state: ResponseState::Status,
-            status: None,
             writeable,
             static_headers,
-            body: PhantomData,
             once: false,
+            body: PhantomData,
+            error: PhantomData,
         }
     }
 
-    pub async fn status(&mut self, status: u16, reason: &str) -> Result<u16, Error> {
-        if let Some(status) = self.status {
-            return Ok(status);
-        }
-
-        if status < 100 || status >= 1000 || self.state != ResponseState::Status {
+    pub async fn status(&mut self, code: u16, reason: &str) -> Result<(), Error> {
+        if code < 100 || code >= 1000 || self.state != ResponseState::Status {
             return Err(Error::InvalidStatus);
         }
 
-        self.status.replace(status);
-
         let _ = self
-            .write_all(format!("HTTP/1.1 {status} {reason}\r\n").as_bytes())
+            .writeable
+            .write_all(format!("HTTP/1.1 {code} {reason}\r\n").as_bytes())
             .await;
 
         self.state = ResponseState::StaticHeaders;
 
         Box::pin(self.headers(&[])).await?;
 
-        Ok(status)
+        Ok(())
     }
 
     pub async fn headers(&mut self, headers: &[(&str, &str)]) -> Result<(), Error> {
@@ -112,11 +107,11 @@ impl<'a, B> Response<'a, B> {
         }
 
         for (name, value) in headers {
-            if *name == "Connection" && *value == "close" {
+            if name.to_ascii_lowercase() == "connection" && *value == "close" {
                 self.once = true;
             }
             let header = format!("{name}: {value}\r\n").into_bytes();
-            self.write_all(&header).await.map_err(|e| {
+            self.writeable.write_all(&header).await.map_err(|e| {
                 println!("{e}");
                 Error::WriteError("Headers")
             })?;
@@ -124,36 +119,29 @@ impl<'a, B> Response<'a, B> {
 
         Ok(())
     }
-}
 
-impl<B: Serialize> Response<'_, B> {
-    pub async fn send(&mut self, data: &B) -> Result<(), Error> {
-        if self.state == ResponseState::Done {
+    /// Requires the Status Line to already be sent
+    pub async fn send(&mut self, data: &impl Serialize) -> Result<(), Error> {
+        if self.state < ResponseState::Header {
             return Err(Error::StateError);
-        }
-
-        if self.state == ResponseState::Status {
-            self.status(200, "OK").await?;
-        }
-
-        if self.state < ResponseState::Body {
-            self.headers(&[]).await?;
         }
 
         let data = data.serialize().map_err(|_| Error::SerializeError)?;
 
-        self.write_all(&format!("Content-Length: {}\r\n\r\n", data.len()).into_bytes())
+        self.writeable
+            .write_all(&format!("Content-Length: {}\r\n\r\n", data.len()).into_bytes())
             .await
             .map_err(|_| Error::WriteError("content length"))?;
 
-        self.write_all(&data)
+        self.writeable
+            .write_all(&data)
             .await
             .map_err(|_| Error::WriteError("body"))?;
 
-        let _ = self.flush().await;
+        let _ = self.writeable.flush().await;
 
         if self.once {
-            let _ = self.close().await;
+            let _ = self.writeable.close().await;
         }
 
         self.state = ResponseState::Done;
@@ -162,7 +150,23 @@ impl<B: Serialize> Response<'_, B> {
     }
 }
 
-impl<B> Drop for Response<'_, B> {
+impl<B: Serialize, E> Response<'_, B, E> {
+    /// Send a response with 200 OK
+    pub async fn ok(&mut self, body: &B) -> Result<(), Error> {
+        self.status(200, "OK").await?;
+        self.send(body).await
+    }
+}
+impl<B, E: Serialize> Response<'_, B, E> {
+    //Send an error with a given code and reason
+    pub async fn err(&mut self, status: (u16, &str), err: &E) -> Result<(), Error> {
+        let (code, reason) = status;
+        self.status(code, reason).await?;
+        self.send(err).await
+    }
+}
+
+impl<B, E> Drop for Response<'_, B, E> {
     //ensure the response gets properly terminated
     fn drop(&mut self) {
         if self.state == ResponseState::Done {
