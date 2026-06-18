@@ -79,24 +79,30 @@ fn get_generic_from_fn_input(item_fn: &syn::ItemFn, arg: usize, generic: usize) 
             syn::Type::Path(ty) => Some(ty),
             _ => None,
         })
-        .and_then(
-            |ty| match &ty.path.segments.iter().nth(generic)?.arguments {
-                syn::PathArguments::AngleBracketed(generics) => Some(generics),
-                _ => None,
-            },
-        )
-        .and_then(|generics| generics.args.last())
+        .and_then(|ty| match &ty.path.segments.iter().last()?.arguments {
+            syn::PathArguments::AngleBracketed(generics) => Some(generics),
+            _ => None,
+        })
+        .and_then(|generics| generics.args.iter().nth(generic))
+        .and_then(|generic| match generic {
+            syn::GenericArgument::Type(ty) => Some(ty),
+            _ => None,
+        })
+        .and_then(|ty| match ty {
+            syn::Type::Path(type_path) => Some(type_path.path.get_ident()?),
+            _ => None,
+        })
         .map(|ty| ty.to_token_stream().to_string())
         .unwrap_or("void".to_string())
 }
 
 #[allow(unreachable_code)]
 pub fn register_endpoint<'a>(path: Vec<String>, method: String, item_fn: &syn::ItemFn) {
-    let request = get_generic_from_fn_input(item_fn, 0, 0);
+    let request = get_generic_from_fn_input(item_fn, 0, 1);
 
-    let response = get_generic_from_fn_input(item_fn, 1, 0);
+    let response = get_generic_from_fn_input(item_fn, 1, 1);
 
-    let error = get_generic_from_fn_input(item_fn, 1, 1);
+    let error = get_generic_from_fn_input(item_fn, 1, 2);
 
     let endpoint = Endpoint {
         path,
