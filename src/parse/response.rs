@@ -37,13 +37,13 @@ enum ResponseState {
 
 pub type Writeable = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
 
-pub struct Response<'a, B = (), E = ()> {
+pub struct Response<'a, Body = (), Error = ()> {
     state: ResponseState,
     writeable: &'a mut Writeable,
     static_headers: &'static [(&'static str, &'static str)],
     once: bool,
-    body: PhantomData<B>,
-    error: PhantomData<E>,
+    body: PhantomData<Body>,
+    error: PhantomData<Error>,
 }
 
 impl Deref for Response<'_> {
@@ -93,13 +93,9 @@ impl<'a, B, E> Response<'a, B, E> {
     }
 
     pub async fn headers(&mut self, headers: &[(&str, &str)]) -> Result<(), Error> {
-        if self.state >= ResponseState::Body {
+        if self.state >= ResponseState::Body || self.state == ResponseState::Status {
             return Err(Error::StateError);
         }
-
-        if self.state == ResponseState::Status {
-            self.status(200, "OK").await?;
-        };
 
         if self.state == ResponseState::StaticHeaders {
             self.state = ResponseState::Header;
@@ -173,7 +169,8 @@ impl<B, E> Drop for Response<'_, B, E> {
             return;
         }
         let _ = smol::block_on(async {
-            if let Ok(..) = self.headers(&[]).await {
+            let _ = self.status(500, "Internal Server Error").await;
+            if let Ok(..) = self.headers(&[("Content-Length", "0")]).await {
                 let _ = self.writeable.write_all(b"\r\n").await;
             };
         });
