@@ -130,7 +130,7 @@ impl<B> DerefMut for Request<'_, B> {
     }
 }
 
-#[doc = include_str!("../../docs/traits/Deserialize.md")]
+#[doc = include_str!("../../macros/docs/traits/Deserialize.md")]
 pub trait Deserialize
 where
     Self: Sized,
