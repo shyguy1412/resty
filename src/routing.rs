@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::write};
+use std::collections::HashMap;
 
 use crate::parse::{request::Readable, response::Writeable};
 
@@ -12,14 +12,18 @@ pub struct Router {
 
 impl std::fmt::Display for Router {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "BEGIN")?;
+        writeln!(f, "Router {{")?;
         for (key, value) in &self.segments {
-            let route = format!("{} -> {}\n", format!("/{key}").replace("/%", "%"), value);
+            let route = format!("{}: {}\n", format!("/{key}").replace("/%", "%"), value);
             let route: String = route.lines().map(|line| format!("  {line}\n")).collect();
             write!(f, "{route}")?;
         }
 
-        writeln!(f, "END")
+        for (method, ..) in &self.endpoints {
+            write!(f, "  {method}\n")?;
+        }
+
+        write!(f, "}}")
     }
 }
 
