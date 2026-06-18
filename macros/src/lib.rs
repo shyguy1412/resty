@@ -12,16 +12,19 @@ fn compile_error<E: std::fmt::Display>(span: proc_macro2::Span, err: E) -> Token
         .into()
 }
 
+#[doc = include_str!("../../docs/macros/manual_routing.md")]
 #[proc_macro_attribute]
 pub fn use_manual_routing(args: TokenStream, body: TokenStream) -> TokenStream {
     routing::manual_routing(args, body)
 }
 
+#[doc = include_str!("../../docs/macros/path_routing.md")]
 #[proc_macro_attribute]
 pub fn use_path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
     routing::path_routing(args, body)
 }
 
+#[doc = include_str!("../../docs/macros/endpoint.md")]
 #[proc_macro_attribute]
 pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
     routing::endpoint_macro_impl(args, body)

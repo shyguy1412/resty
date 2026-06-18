@@ -3,6 +3,7 @@ pub mod response;
 
 use smol::{io::AsyncReadExt, net::TcpStream, stream::StreamExt};
 
+/// Enum for every valid HTTP method with a variant for invalid methods
 #[derive(Clone, Copy, Debug, PartialEq, Hash, Eq)]
 pub enum HttpMethod {
     GET,

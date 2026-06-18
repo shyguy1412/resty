@@ -7,6 +7,7 @@ use smol::{
 
 use crate::{Router, routing::HandlerData};
 
+/// Type alias for the Future returned by a Handler
 pub type EndpointTask<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Send>>;
 
 static EXECUTOR: smol::Executor = smol::Executor::new();
@@ -16,6 +17,9 @@ pub fn bind(addr: SocketAddrV4, router: &'static Router) -> () {
     EXECUTOR.spawn(accept_connections(addr, router)).detach();
 }
 
+/// Spawns a worker thread to handle the async task queue.
+///
+/// At least one worker thread must be spawned
 #[allow(unreachable_code)]
 #[inline(always)]
 pub fn spawn_thread() -> std::thread::JoinHandle<std::convert::Infallible> {

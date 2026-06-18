@@ -51,7 +51,7 @@ pub fn endpoint(
         .and_then(|p| p.strip_prefix("/").or(Some(p)))
         .or_else(|| match Span::call_site().local_file() {
             None => Some("<rust-analyzer has not yet implemented Span::local_file>"),
-            Some(..) => panic!("IDK why this would be reachable"),
+            Some(..) => None,
         })
         .map(|p| p.split("/"));
 

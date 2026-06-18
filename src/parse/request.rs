@@ -33,6 +33,9 @@ impl std::fmt::Display for Error {
 
 pub type Readable = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>;
 
+/// An partially parsed Request with headers, cookies and path parameters.  
+///
+/// The request body is read lazily
 pub struct Request<'a, B = ()> {
     pub headers: &'a [httparse::Header<'a>],
     pub url: Url,

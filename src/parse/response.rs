@@ -37,6 +37,7 @@ enum ResponseState {
 
 pub type Writeable = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
 
+/// A response with an optional Body and Error type
 pub struct Response<'a, Body = (), Error = ()> {
     state: ResponseState,
     writeable: &'a mut Writeable,

@@ -7,7 +7,7 @@ This allows free choice of serialization format and framework.
 
 An example using serde and serde_json
 
-```rs
+```rust
 #[derive(serde::Deserialize, resty::Deserialize)]
 #[deserializer(crate::deserialize)]
 struct MyResponse {

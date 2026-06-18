@@ -2,8 +2,16 @@ use std::collections::HashMap;
 
 use crate::parse::{request::Readable, response::Writeable};
 
+/// Type alias for the dyn Trait a Handler function must have
+///
+/// This is not generally used directly since the `#[endpoint]` macro wraps your
+/// async function to comply with this Trait
 pub type Handler = dyn for<'a> Fn(&'a mut HandlerData<'a>) -> crate::EndpointTask<'a> + Sync;
 
+/// A router that routes a path to an endpoint while resolving path parameters
+///
+/// Any route segment starting with `[` is considered a path parameter
+/// The route `%404` is used as fallback if no other route could be found
 #[derive(Default)]
 pub struct Router {
     pub(crate) segments: HashMap<&'static str, Router>,
@@ -45,8 +53,6 @@ impl Router {
 
         for current_segment in *route {
             let Router { segments, .. } = current_router;
-
-            println!("current_segment");
 
             let key = match current_segment.chars().nth(0).map(|c| c == '[') {
                 Some(true) => "%param",
@@ -99,15 +105,17 @@ impl Router {
     }
 }
 
+/// Type alias for the description of a Route
 pub type RouteSlice = (
-    &'static [&'static str],
+    &'static [&'static str], // route segments
     &'static Handler,
     crate::parse::HttpMethod,
 );
 
+/// Data passed to a handler
 pub struct HandlerData<'a> {
     pub request: httparse::Request<'a, 'a>,
     pub path_params: Vec<&'a str>,
-    pub readable: &'a mut Readable, // pub stream: &'a mut smol::net::TcpStream,
-    pub writeable: &'a mut Writeable, // pub stream: &'a mut smol::net::TcpStream,
+    pub readable: &'a mut Readable,
+    pub writeable: &'a mut Writeable,
 }
