@@ -2,7 +2,7 @@ use proc_macro::{Span, TokenStream};
 use quote::format_ident;
 use syn::{parse_macro_input, parse_str};
 
-use crate::{compile_error, routing::get_endpoint_path};
+use crate::{compile_error, routing::get_endpoint_path, spec::register_endpoint};
 
 pub fn handler(
     endpoint_fn: &syn::ItemFn,
@@ -62,6 +62,8 @@ pub fn endpoint(
         );
     };
 
+    let endpoint: Vec<_> = endpoint.map(|s| s.to_string()).collect();
+
     let default_router = parse_str("super::__RESTY__ROUTER").ok();
     let router = router.or(default_router.as_ref());
 
@@ -69,6 +71,8 @@ pub fn endpoint(
     let slice_ident = format_ident!("{handler_ident}_route");
     let handler = handler(endpoint_fn, &handler_ident, static_headers);
     let handler = parse_macro_input!(handler as syn::ItemFn);
+
+    register_endpoint(endpoint.clone(), method.to_string(), endpoint_fn);
 
     match router {
         Some(_) => quote::quote! {

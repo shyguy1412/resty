@@ -3,8 +3,13 @@ mod generate;
 mod parse;
 mod routing;
 
+mod spec;
+
 use proc_macro::TokenStream;
 use quote::ToTokens;
+use syn::{ItemStruct, parse_macro_input};
+
+use crate::spec::register_struct;
 
 fn compile_error<E: std::fmt::Display>(span: proc_macro2::Span, err: E) -> TokenStream {
     syn::Error::new(span, err.to_string())
@@ -64,4 +69,11 @@ pub fn derive_resty_deserialize(input: TokenStream) -> TokenStream {
     }
     }
     .into()
+}
+
+#[proc_macro_attribute]
+pub fn public(_: TokenStream, body: TokenStream) -> TokenStream {
+    let item_struct = parse_macro_input!(body as syn::ItemStruct);
+    register_struct(&item_struct);
+    item_struct.into_token_stream().into()
 }
