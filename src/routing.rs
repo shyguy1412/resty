@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::write};
 
 use crate::parse::{request::Readable, response::Writeable};
 
@@ -10,32 +10,53 @@ pub struct Router {
     pub(crate) endpoints: HashMap<crate::parse::HttpMethod, &'static Handler>,
 }
 
+impl std::fmt::Display for Router {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "BEGIN")?;
+        for (key, value) in &self.segments {
+            let route = format!("{} -> {}\n", format!("/{key}").replace("/%", "%"), value);
+            let route: String = route.lines().map(|line| format!("  {line}\n")).collect();
+            write!(f, "{route}")?;
+        }
+
+        writeln!(f, "END")
+    }
+}
+
 impl Router {
     pub fn new(route_slices: &[RouteSlice]) -> Self {
         let mut route_table = Router::default();
 
-        for (route, handler, method) in route_slices {
-            let mut current_table = &mut route_table;
-
-            for current_segment in *route {
-                let Router { segments, .. } = current_table;
-
-                let key = match current_segment.chars().nth(0).map(|c| c == '[') {
-                    Some(true) => "@param",
-                    _ => current_segment,
-                };
-
-                if !segments.contains_key(current_segment) {
-                    segments.insert(key, Router::default());
-                }
-
-                current_table = segments.get_mut(key).unwrap()
-            }
-
-            current_table.endpoints.insert(*method, *handler);
+        for slice in route_slices {
+            route_table.add_route(slice)
         }
 
+        println!("{route_table}");
+
         return route_table;
+    }
+
+    pub fn add_route(&mut self, (route, handler, method): &RouteSlice) {
+        let mut current_router = self;
+
+        for current_segment in *route {
+            let Router { segments, .. } = current_router;
+
+            println!("current_segment");
+
+            let key = match current_segment.chars().nth(0).map(|c| c == '[') {
+                Some(true) => "%param",
+                _ => current_segment,
+            };
+
+            if !segments.contains_key(current_segment) {
+                segments.insert(key, Router::default());
+            }
+
+            current_router = segments.get_mut(key).unwrap()
+        }
+
+        current_router.endpoints.insert(*method, *handler);
     }
 
     pub fn route<'a>(&'a self, path: &'a str) -> Option<(&'a Router, Vec<&'a str>)> {
@@ -51,15 +72,20 @@ impl Router {
         let mut route = self;
 
         while let Some(current_segment) = segments.next() {
-            let next_route = match route.segments.get(current_segment) {
-                Some(route) => route,
-                None => match route.segments.get("@param") {
-                    Some(route) => {
-                        path_parameters.push(current_segment);
-                        route
-                    }
-                    None => return None,
-                },
+            let dynamic = || {
+                route
+                    .segments
+                    .get("%param")
+                    .inspect(|_| path_parameters.push(current_segment))
+            };
+
+            let Some(next_route) = route
+                .segments
+                .get(current_segment)
+                .or_else(dynamic)
+                .or_else(|| self.segments.get("%404"))
+            else {
+                return None;
             };
 
             route = next_route;
@@ -69,16 +95,11 @@ impl Router {
     }
 }
 
-#[doc(hidden)]
 pub type RouteSlice = (
     &'static [&'static str],
     &'static Handler,
     crate::parse::HttpMethod,
 );
-
-#[doc(hidden)]
-#[linkme::distributed_slice]
-pub static FALLBACK: [&'static Handler];
 
 pub struct HandlerData<'a> {
     pub request: httparse::Request<'a, 'a>,

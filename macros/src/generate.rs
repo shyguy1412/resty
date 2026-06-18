@@ -50,8 +50,8 @@ pub fn endpoint(
         .map(|v| v.as_str())
         .and_then(|p| p.strip_prefix("/").or(Some(p)))
         .or_else(|| match Span::call_site().local_file() {
-            None => None,
-            Some(..) => Some("<rust-analyzer has not yet implemented Span::local_file>"),
+            None => Some("<rust-analyzer has not yet implemented Span::local_file>"),
+            Some(..) => panic!("IDK why this would be reachable"),
         })
         .map(|p| p.split("/"));
 
@@ -61,15 +61,6 @@ pub fn endpoint(
             "Can not determine endpoint route. Maybe you are missing a Path directive?",
         );
     };
-    // {
-    //     Some(a) => a,
-    //     None => match path {
-    //         Some(_) => {
-    //             panic!("Can not determine endpoint route. Maybe you are missing a Path directive?")
-    //         }
-    //         None => "<rust-analyzer has not yet implemented Span::local_file>".to_string(),
-    //     },
-    // }
 
     let default_router = parse_str("super::__RESTY__ROUTER").ok();
     let router = router.or(default_router.as_ref());

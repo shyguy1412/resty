@@ -44,6 +44,7 @@ pub fn path_override(args: &Vec<(String, Vec<syn::Expr>)>) -> Option<String> {
         })
         .and_then(|lit| match lit {
             syn::Lit::Str(lit_str) => Some(lit_str.value()),
+            syn::Lit::Int(lit_int) => Some(format!("%{}", lit_int.base10_digits())),
             _ => None,
         })
 }
@@ -67,7 +68,7 @@ pub fn meta_list(tokens: TokenStream) -> Vec<syn::Expr> {
 
 macro_rules! parse_derive_attr {
     ($attr: literal in $input:ident else $msg: literal) => {{
-        let ast = parse_macro_input!($input as syn::DeriveInput);
+        let ast = ::syn::parse_macro_input!($input as ::syn::DeriveInput);
         let tokens = ast
             .attrs
             .iter()
@@ -77,15 +78,15 @@ macro_rules! parse_derive_attr {
 
         let tokens = match tokens {
             Ok(v) => v,
-            Err(err) => return compile_error(proc_macro2::Span::call_site(), err),
+            Err(err) => return compile_error(::proc_macro2::Span::call_site(), err),
         };
 
         let Some(tokens) = tokens else {
-            return compile_error(proc_macro2::Span::call_site(), $msg);
+            return compile_error(::proc_macro2::Span::call_site(), $msg);
         };
 
         (
-            parse_macro_input!(tokens as syn::Path),
+            ::syn::parse_macro_input!(tokens as syn::Path),
             ast.ident,
             ast.generics,
         )

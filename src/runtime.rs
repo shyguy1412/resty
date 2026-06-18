@@ -5,10 +5,7 @@ use smol::{
     net::TcpListener,
 };
 
-use crate::{
-    Router,
-    routing::{FALLBACK, HandlerData},
-};
+use crate::{Router, routing::HandlerData};
 
 pub type EndpointTask<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Send>>;
 
@@ -87,7 +84,7 @@ async fn handle_stream(mut stream: smol::net::TcpStream, router: &Router) -> () 
             .and_then(|route| router.route(route))
             .zip(request.method.map(Into::into))
             .and_then(|((route, params), method)| Some((route.endpoints.get(&method)?, params)))
-            .or_else(|| FALLBACK.get(0).map(|fallback| (fallback, vec![])))
+        // .or_else(|| FALLBACK.get(0).map(|fallback| (fallback, vec![])))
         else {
             inline_response!(404 "Not Found" on stream with (
                 "Content-Length" => "0"
