@@ -1,4 +1,4 @@
-mod generate;
+mod endpoint;
 #[macro_use]
 mod parse;
 mod routing;
@@ -7,7 +7,7 @@ mod spec;
 
 use proc_macro::TokenStream;
 use quote::ToTokens;
-use syn::{ItemStruct, parse_macro_input};
+use syn::parse_macro_input;
 
 use crate::spec::register_struct;
 
@@ -32,7 +32,7 @@ pub fn use_path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
 #[doc = include_str!("../docs/macros/endpoint.md")]
 #[proc_macro_attribute]
 pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
-    routing::endpoint_macro_impl(args, body)
+    endpoint::endpoint_macro_impl(args, body)
 }
 
 #[doc = include_str!("../docs/traits/Serialize.md")]

@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::parse::{request::Readable, response::Writeable};
+use crate::{
+    HttpMethod,
+    parse::{request::Readable, response::Writeable},
+};
 
 /// Type alias for the dyn Trait a Handler function must have
 ///
@@ -15,11 +18,31 @@ pub type Handler = dyn for<'a> Fn(&'a mut HandlerData<'a>) -> crate::EndpointTas
 #[derive(Default)]
 pub struct Router {
     pub(crate) segments: HashMap<&'static str, Router>,
-    pub(crate) endpoints: HashMap<crate::parse::HttpMethod, &'static Handler>,
+    pub(crate) endpoint: Option<(u8, &'static Handler)>,
+}
+
+impl std::fmt::Debug for Router {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{self}")
+    }
 }
 
 impl std::fmt::Display for Router {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fn fmt_mthod(value: u8) -> Vec<HttpMethod> {
+            let mut vec = Vec::with_capacity(8);
+            let mut cur = 1u8;
+
+            while cur != 0 {
+                if cur & value > 0 {
+                    vec.push(unsafe { std::mem::transmute(cur) });
+                }
+
+                cur = cur << 1;
+            }
+
+            vec
+        }
         writeln!(f, "Router {{")?;
         for (key, value) in &self.segments {
             let route = format!("{}: {}\n", format!("/{key}").replace("/%", "%"), value);
@@ -27,7 +50,7 @@ impl std::fmt::Display for Router {
             write!(f, "{route}")?;
         }
 
-        for (method, ..) in &self.endpoints {
+        for method in fmt_mthod(self.endpoint.map(|a| a.0).unwrap_or(0)) {
             write!(f, "  {method}\n")?;
         }
 
@@ -42,8 +65,6 @@ impl Router {
         for slice in route_slices {
             route_table.add_route(slice)
         }
-
-        println!("{route_table}");
 
         return route_table;
     }
@@ -66,7 +87,7 @@ impl Router {
             current_router = segments.get_mut(key).unwrap()
         }
 
-        current_router.endpoints.insert(*method, *handler);
+        current_router.endpoint.replace((*method, *handler));
     }
 
     pub fn route<'a>(&'a self, path: &'a str) -> Option<(&'a Router, Vec<&'a str>)> {
@@ -109,7 +130,7 @@ impl Router {
 pub type RouteSlice = (
     &'static [&'static str], // route segments
     &'static Handler,
-    crate::parse::HttpMethod,
+    u8,
 );
 
 /// Data passed to a handler

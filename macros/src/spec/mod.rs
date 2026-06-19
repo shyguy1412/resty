@@ -22,7 +22,8 @@ impl std::fmt::Display for Endpoint {
             "\"path\": [{}],\n  ",
             self.path
                 .iter()
-                .map(|p| format!("\"{p}\""))
+                .map(|p| format!("\"/{p}\""))
+                .map(|p| p.replace("/%", "%"))
                 .collect::<Vec<_>>()
                 .join(", ")
         )?;
@@ -167,7 +168,6 @@ fn decl_content() -> String {
 
     let output = format!("{{\n  \"structs\": {structs},\n  \"endpoints\": {endpoints}\n}}");
 
-    println!("{output}");
     output
 }
 

@@ -5,7 +5,7 @@ use smol::{
     net::TcpListener,
 };
 
-use crate::{Router, routing::HandlerData};
+use crate::{HttpMethod, Router, routing::HandlerData};
 
 /// Type alias for the Future returned by a Handler
 pub type EndpointTask<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Send>>;
@@ -23,7 +23,6 @@ pub fn bind(addr: SocketAddrV4, router: &'static Router) -> () {
 #[allow(unreachable_code)]
 #[inline(always)]
 pub fn spawn_thread() -> std::thread::JoinHandle<std::convert::Infallible> {
-    println!("Thread Spawned");
     std::thread::spawn(|| {
         smol::block_on(async {
             loop {
@@ -86,8 +85,13 @@ async fn handle_stream(mut stream: smol::net::TcpStream, router: &Router) -> () 
         let Some((handler, path_params)) = request
             .path
             .and_then(|route| router.route(route))
-            .zip(request.method.map(Into::into))
-            .and_then(|((route, params), method)| Some((route.endpoints.get(&method)?, params)))
+            .zip(request.method.map(Into::<HttpMethod>::into))
+            .and_then(
+                |((route, params), method)| match route.endpoint?.0 & method as u8 > 0 {
+                    true => Some((route.endpoint?.1, params)),
+                    false => None,
+                },
+            )
         // .or_else(|| FALLBACK.get(0).map(|fallback| (fallback, vec![])))
         else {
             inline_response!(404 "Not Found" on stream with (
