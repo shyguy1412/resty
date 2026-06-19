@@ -86,13 +86,7 @@ async fn handle_stream(mut stream: smol::net::TcpStream, router: &Router) -> () 
             .path
             .and_then(|route| router.route(route))
             .zip(request.method.map(Into::<HttpMethod>::into))
-            .and_then(
-                |((route, params), method)| match route.endpoint?.0 & method as u8 > 0 {
-                    true => Some((route.endpoint?.1, params)),
-                    false => None,
-                },
-            )
-        // .or_else(|| FALLBACK.get(0).map(|fallback| (fallback, vec![])))
+            .and_then(|((route, params), method)| Some((route.method(method)?, params)))
         else {
             inline_response!(404 "Not Found" on stream with (
                 "Content-Length" => "0"
