@@ -59,7 +59,7 @@ macro_rules! inline_response {
             "HTTP/1.1 ",$code, " ", $reason,"\r\n",
             $($header, ":", $value,"\r\n"),*,
             "\r\n",
-        ).as_bytes());
+        ).as_bytes()).await;
     };
 }
 
