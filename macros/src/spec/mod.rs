@@ -1,4 +1,4 @@
-use std::{fmt::write, io::Write, path::Display, sync::Mutex};
+use std::{io::Write, sync::Mutex};
 
 use quote::ToTokens;
 

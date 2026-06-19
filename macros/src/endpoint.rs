@@ -54,7 +54,7 @@ pub fn endpoint_macro_impl(args: TokenStream, body: TokenStream) -> TokenStream 
         .collect();
 
     let method_byte = quote::quote! {
-        {#(::resty::HttpMethod::#methods as u8 )|*}
+        {#(::resty::HttpMethod::#methods as u16 )|*}
     }
     .into();
 

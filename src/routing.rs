@@ -18,7 +18,7 @@ pub type Handler = dyn for<'a> Fn(&'a mut HandlerData<'a>) -> crate::EndpointTas
 #[derive(Default)]
 pub struct Router {
     pub(crate) segments: HashMap<&'static str, Router>,
-    pub(crate) endpoints: Vec<(u8, &'static Handler)>,
+    pub(crate) endpoints: Vec<(u16, &'static Handler)>,
 }
 
 impl std::fmt::Debug for Router {
@@ -29,11 +29,11 @@ impl std::fmt::Debug for Router {
 
 impl std::fmt::Display for Router {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        fn fmt_mthod(value: u8) -> Vec<HttpMethod> {
-            let mut vec = Vec::with_capacity(8);
-            let mut cur = 1u8;
+        fn fmt_mthod(value: u16) -> Vec<HttpMethod> {
+            let mut vec = Vec::with_capacity(16);
+            let mut cur = 1u16;
 
-            while cur != 0 {
+            while cur != 0 && cur <= HttpMethod::TRACE as u16 {
                 if cur & value > 0 {
                     vec.push(unsafe { std::mem::transmute(cur) });
                 }
@@ -126,12 +126,12 @@ impl Router {
     }
 
     pub fn method(&self, method: HttpMethod) -> Option<&'static Handler> {
-        self.endpoints
-            .iter()
-            .find_map(|(mask, handler)| match method as u8 & mask > 0 {
+        self.endpoints.iter().find_map(|(mask, handler)| {
+            match method as u16 & mask > 0 || *mask == HttpMethod::ALL as u16 {
                 true => Some(*handler),
                 false => None,
-            })
+            }
+        })
     }
 }
 
@@ -139,7 +139,7 @@ impl Router {
 pub type RouteSlice = (
     &'static [&'static str], // route segments
     &'static Handler,
-    u8,
+    u16,
 );
 
 /// Data passed to a handler

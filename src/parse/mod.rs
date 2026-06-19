@@ -6,17 +6,18 @@ use smol::{io::AsyncReadExt, net::TcpStream, stream::StreamExt};
 /// Enum for every valid HTTP method with a variant for invalid methods
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, PartialEq, Hash, Eq)]
-#[repr(u8)]
+#[repr(u16)]
 pub enum HttpMethod {
-    GET     = 0b00000001u8,
-    PUT     = 0b00000010u8,
-    POST    = 0b00000100u8,
-    DELETE  = 0b00001000u8,
-    PATCH   = 0b00010000u8,
-    HEAD    = 0b00100000u8,
-    OPTIONS = 0b01000000u8,
-    TRACE   = 0b10000000u8,
-    INVALID = 0b00000000u8,
+    GET     = 0b00000001,
+    PUT     = 0b00000010,
+    POST    = 0b00000100,
+    DELETE  = 0b00001000,
+    PATCH   = 0b00010000,
+    HEAD    = 0b00100000,
+    OPTIONS = 0b01000000,
+    TRACE   = 0b10000000,
+    INVALID = 0b00000000,
+    ALL     = u16::MAX,
 }
 
 impl From<&str> for HttpMethod {
