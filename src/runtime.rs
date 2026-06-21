@@ -1,6 +1,6 @@
 use smol::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::{HttpMethod, Router, Socket, parse, routing::HandlerData};
+use crate::{HttpMethod, Router, Socket, routing::HandlerData};
 
 /// Type alias for the Future returned by a Handler
 pub type EndpointTask<'a> =
