@@ -1,9 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{
-    HttpMethod,
-    parse::{request::Readable, response::Writeable},
-};
+use crate::{HttpMethod, request::Readable, response::Writeable};
 
 /// Type alias for the dyn Trait a Handler function must have
 ///

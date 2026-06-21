@@ -3,28 +3,9 @@ use std::{
     ops::{Deref, DerefMut},
 };
 
-#[derive(Debug, Clone)]
-pub enum Error {
-    SerializeError,
-    WriteError(&'static str),
-    StateError,
-    InvalidStatus,
-}
-
-impl std::error::Error for Error {}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::SerializeError => write!(f, "SerializeError"),
-            Error::WriteError(e) => write!(f, "WriteError({e})"),
-            Error::StateError => write!(f, "StateError"),
-            Error::InvalidStatus => write!(f, "InvalidStatus"),
-        }
-    }
-}
-
 use smol::io::AsyncWriteExt;
+
+use crate::Error;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 enum ResponseState {
@@ -108,10 +89,10 @@ impl<'a, B, E> Response<'a, B, E> {
                 self.once = true;
             }
             let header = format!("{name}: {value}\r\n").into_bytes();
-            self.writeable.write_all(&header).await.map_err(|e| {
-                println!("{e}");
-                Error::WriteError("Headers")
-            })?;
+            self.writeable
+                .write_all(&header)
+                .await
+                .map_err(|e| Error::WriteError(e))?;
         }
 
         Ok(())
@@ -128,12 +109,12 @@ impl<'a, B, E> Response<'a, B, E> {
         self.writeable
             .write_all(&format!("Content-Length: {}\r\n\r\n", data.len()).into_bytes())
             .await
-            .map_err(|_| Error::WriteError("content length"))?;
+            .map_err(Error::WriteError)?;
 
         self.writeable
             .write_all(&data)
             .await
-            .map_err(|_| Error::WriteError("body"))?;
+            .map_err(Error::WriteError)?;
 
         let _ = self.writeable.flush().await;
 
@@ -178,7 +159,7 @@ impl<B, E> Drop for Response<'_, B, E> {
     }
 }
 
-#[doc = include_str!("../../docs/traits/Serialize.md")]
+#[doc = include_str!("../docs/traits/Serialize.md")]
 pub trait Serialize {
     fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
 }

@@ -1,15 +1,16 @@
 use smol::io::{AsyncRead, AsyncWrite};
 
 mod tcp;
-pub use tcp::TcpConnector;
+pub use tcp::TcpScocket;
 
 mod unix;
-pub use unix::UnixConnector;
+pub use unix::UnixSocket;
 
-pub trait Connector: Send {
+/// The Socket trait allows for implementation of custom transport layers
+pub trait Socket: Send {
     type Error;
     type Address;
-    type Stream: AsyncRead + AsyncWrite + Unpin + Clone + Send + 'static;
+    type Stream: AsyncRead + AsyncWrite + Unpin + Clone + Send;
 
     fn bind(
         addr: Self::Address,

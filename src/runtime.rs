@@ -1,18 +1,19 @@
 use smol::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::{HttpMethod, Router, connector::Connector, routing::HandlerData};
+use crate::{HttpMethod, Router, Socket, parse, routing::HandlerData};
 
 /// Type alias for the Future returned by a Handler
-pub type EndpointTask<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Send>>;
+pub type EndpointTask<'a> =
+    std::pin::Pin<Box<dyn Future<Output = Result<(), crate::Error>> + 'a + Send>>;
 
 static EXECUTOR: smol::Executor = smol::Executor::new();
 
 #[inline(always)]
-pub fn bind<C: Connector + 'static>(
-    addr: C::Address,
+pub fn bind<S: Socket + 'static>(
+    addr: S::Address,
     router: &'static Router,
-) -> Result<(), C::Error> {
-    let connector = smol::block_on(C::bind(addr))?;
+) -> Result<(), S::Error> {
+    let connector = smol::block_on(S::bind(addr))?;
 
     EXECUTOR
         .spawn(accept_connections(connector, router))
@@ -35,17 +36,14 @@ pub fn spawn_thread() -> std::thread::JoinHandle<std::convert::Infallible> {
     })
 }
 
-async fn accept_connections<C: Connector + 'static>(
-    connector: Box<C>,
-    router: &'static Router,
-) -> () {
+async fn accept_connections<S: Socket + 'static>(connector: Box<S>, router: &'static Router) -> () {
     loop {
         let Ok(stream) = connector.accept().await else {
             println!("Dropped incoming connection");
             continue;
         };
 
-        EXECUTOR.spawn(handle_stream::<C>(stream, router)).detach();
+        EXECUTOR.spawn(handle_stream::<S>(stream, router)).detach();
     }
 }
 
@@ -59,12 +57,12 @@ macro_rules! inline_response {
     };
 }
 
-async fn handle_stream<C: Connector + 'static>(mut stream: C::Stream, router: &Router) -> () {
+async fn handle_stream<S: Socket + 'static>(mut stream: S::Stream, router: &Router) -> () {
     loop {
         // let time = std::time::Instant::now();
 
         let buffer = &mut Vec::with_capacity(4000);
-        let Some(header_count) = crate::parse::read_headers::<C>(&mut stream, buffer).await else {
+        let Some(header_count) = crate::parse::read_headers::<S>(&mut stream, buffer).await else {
             return;
         };
         buffer.shrink_to_fit();
@@ -104,13 +102,20 @@ async fn handle_stream<C: Connector + 'static>(mut stream: C::Stream, router: &R
             Some(value) => stream.clone().take(value).boxed_reader(),
             None => stream.clone().boxed_reader(),
         };
-        handler(&mut HandlerData {
+
+        if let Err(..) = handler(&mut HandlerData {
             request,
             path_params,
             readable,
             writeable,
         })
-        .await;
+        .await
+        {
+            inline_response!(500 "Internal Server Error" on stream with (
+                "Content-Length" => "0"
+            ));
+            return;
+        };
 
         //fully consume readable before moving on
         if let Some(length) = content_length

@@ -83,19 +83,18 @@ pub fn endpoint_macro_impl(args: TokenStream, body: TokenStream) -> TokenStream 
     let handler = quote::quote! {
         pub fn #fn_ident #generics (data: &#lifetime mut ::resty::HandlerData<#lifetime>)
         -> ::resty::EndpointTask<#lifetime> {
-            use ::resty::__private::*;
-            #endpoint_fn;
+            #endpoint_fn
+
+            const static_headers :&[(&str, &str)] = &[#(#static_headers),*];
+
             Box::pin(async move {
-                let Some(mut request) = ::resty::Request::new(&data.request, &data.path_params, data.readable).await else {
-                    todo!("Handle parsing errors")
-                };
-
-                const static_headers :&[(&str, &str)] = &[#(#static_headers),*];
-
+                let mut request = ::resty::Request::new(&data.request, &data.path_params, data.readable).await?;
                 let mut response = ::resty::Response::new(data.writeable, static_headers);
 
-                #fn_ident(&mut request, &mut response).await;
+                #fn_ident(&mut request, &mut response).await
             })
+
+
         }
     };
 

@@ -21,9 +21,11 @@
 //!
 //! fn main() -> ExitCode {
 //!     const ADDR: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 3333);
-//!
-//!     resty::bind(ADDR, &ROUTER);
-//!
+//!     if let Err(error) = resty::bind::<TcpSocket>(ADDR, &ROUTER) {
+//!         println!("{error:?}");
+//!         return ExitCode::FAILURE;
+//!     }
+//!     
 //!     println!("Listening on port 3333");
 //!
 //!     let _: Vec<_> = std::thread::available_parallelism()
@@ -40,22 +42,56 @@
 //! ```
 
 mod parse;
-pub use parse::{
-    HttpMethod,
-    request::{Deserialize, Request},
-    response::{Response, Serialize},
-};
+pub use parse::HttpMethod;
+
+mod request;
+pub use request::{Deserialize, Request};
+mod response;
+pub use response::{Response, Serialize};
 
 mod routing;
 
 mod runtime;
 pub use runtime::*;
 
-mod connector;
-pub use connector::*;
+mod socket;
+pub use socket::*;
 
 pub use resty_macros::*;
 pub use routing::*;
+
+#[derive(Debug)]
+pub enum Error {
+    SerializeError,
+    WriteError(std::io::Error),
+    StateError,
+    InvalidStatus,
+    MissingContentLength,
+    InvalidContentLength,
+    ReadError,
+    ParseError,
+    UnTypedRequest,
+}
+
+impl std::error::Error for Error {}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::MissingContentLength => write!(f, "MissingContentLength"),
+            Error::InvalidContentLength => write!(f, "InvalidContentLength"),
+            Error::ReadError => write!(f, "ReadError"),
+            Error::ParseError => write!(f, "ParseError"),
+            Error::UnTypedRequest => write!(f, "UnTypedRequest"),
+            Error::SerializeError => write!(f, "SerializeError"),
+            Error::WriteError(e) => write!(f, "WriteError({e})"),
+            Error::StateError => write!(f, "StateError"),
+            Error::InvalidStatus => write!(f, "InvalidStatus"),
+        }
+    }
+}
+
+pub type Result = std::result::Result<(), Error>;
 
 #[doc(hidden)]
 pub mod __private {

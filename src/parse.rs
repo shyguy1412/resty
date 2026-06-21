@@ -1,9 +1,6 @@
-pub mod request;
-pub mod response;
-
 use smol::{io::AsyncReadExt, stream::StreamExt};
 
-use crate::connector::Connector;
+use crate::Socket;
 
 /// Enum for every valid HTTP method with a variant for invalid methods
 #[rustfmt::skip]
@@ -46,7 +43,7 @@ impl std::fmt::Display for HttpMethod {
 }
 
 #[inline(always)]
-pub(crate) async fn read_headers<C: Connector>(
+pub(crate) async fn read_headers<C: Socket>(
     stream: &mut C::Stream,
     buff: &mut Vec<u8>,
 ) -> Option<usize> {

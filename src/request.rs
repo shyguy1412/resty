@@ -6,30 +6,7 @@ use std::{
 use smol::io::AsyncReadExt;
 use url::Url;
 
-use crate::parse::parse_cookies;
-
-#[derive(Debug, Clone, Copy)]
-pub enum Error {
-    MissingContentLength,
-    InvalidContentLength,
-    ReadError,
-    ParseError,
-    UnTypedRequest,
-}
-
-impl std::error::Error for Error {}
-
-impl std::fmt::Display for Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::MissingContentLength => write!(f, "MissingContentLength"),
-            Error::InvalidContentLength => write!(f, "InvalidContentLength"),
-            Error::ReadError => write!(f, "ReadError"),
-            Error::ParseError => write!(f, "ParseError"),
-            Error::UnTypedRequest => write!(f, "UnTypedRequest"),
-        }
-    }
-}
+use crate::{Error, parse::parse_cookies};
 
 pub type Readable = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>;
 
@@ -52,7 +29,7 @@ impl<'a, B: Deserialize> Request<'a, B> {
         request: &'a httparse::Request<'a, 'a>,
         path_params: &'a Vec<&'a str>,
         readable: &'a mut Readable,
-    ) -> Option<Self> {
+    ) -> Result<Self, Error> {
         let host = request
             .headers
             .iter()
@@ -64,15 +41,19 @@ impl<'a, B: Deserialize> Request<'a, B> {
             })
             .unwrap_or("localhost");
 
-        let url = Url::parse(&format!("http://{host}{}", request.path?)).ok()?;
+        let url = request
+            .path
+            .map(|path| format!("http://{host}{}", path))
+            .and_then(|url| Url::parse(&url).ok())
+            .ok_or(Error::ParseError)?;
 
         let cookies = parse_cookies(request.headers);
 
-        Some(Self {
-            method: request.method?,
+        Ok(Self {
+            method: request.method.ok_or(Error::ParseError)?,
             url,
             cookies,
-            version: request.version?,
+            version: request.version.ok_or(Error::ParseError)?,
             headers: request.headers,
             readable,
             path_params,
@@ -130,7 +111,7 @@ impl<B> DerefMut for Request<'_, B> {
     }
 }
 
-#[doc = include_str!("../../docs/traits/Deserialize.md")]
+#[doc = include_str!("../docs/traits/Deserialize.md")]
 pub trait Deserialize
 where
     Self: Sized,
