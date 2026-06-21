@@ -1,7 +1,9 @@
 pub mod request;
 pub mod response;
 
-use smol::{io::AsyncReadExt, net::TcpStream, stream::StreamExt};
+use smol::{io::AsyncReadExt, stream::StreamExt};
+
+use crate::connector::Connector;
 
 /// Enum for every valid HTTP method with a variant for invalid methods
 #[rustfmt::skip]
@@ -44,9 +46,12 @@ impl std::fmt::Display for HttpMethod {
 }
 
 #[inline(always)]
-pub(crate) async fn read_headers(stream: &mut TcpStream, buff: &mut Vec<u8>) -> Option<usize> {
-    let bytes = &mut stream.bytes();
+pub(crate) async fn read_headers<C: Connector>(
+    stream: &mut C::Stream,
+    buff: &mut Vec<u8>,
+) -> Option<usize> {
     let mut header_count: usize = 0; //adjust for overcounting
+    let bytes = &mut stream.bytes();
     while let Some(Ok(byte)) = bytes.next().await {
         buff.push(byte);
 

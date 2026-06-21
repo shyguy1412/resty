@@ -51,6 +51,9 @@ mod routing;
 mod runtime;
 pub use runtime::*;
 
+mod connector;
+pub use connector::*;
+
 pub use resty_macros::*;
 pub use routing::*;
 

@@ -1,11 +1,6 @@
-use std::net::SocketAddrV4;
+use smol::io::{AsyncReadExt, AsyncWriteExt};
 
-use smol::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
-};
-
-use crate::{HttpMethod, Router, routing::HandlerData};
+use crate::{HttpMethod, Router, connector::Connector, routing::HandlerData};
 
 /// Type alias for the Future returned by a Handler
 pub type EndpointTask<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Send>>;
@@ -13,8 +8,16 @@ pub type EndpointTask<'a> = std::pin::Pin<Box<dyn Future<Output = ()> + 'a + Sen
 static EXECUTOR: smol::Executor = smol::Executor::new();
 
 #[inline(always)]
-pub fn bind(addr: SocketAddrV4, router: &'static Router) -> () {
-    EXECUTOR.spawn(accept_connections(addr, router)).detach();
+pub fn bind<C: Connector + 'static>(
+    addr: C::Address,
+    router: &'static Router,
+) -> Result<(), C::Error> {
+    let connector = smol::block_on(C::bind(addr))?;
+
+    EXECUTOR
+        .spawn(accept_connections(connector, router))
+        .detach();
+    Ok(())
 }
 
 /// Spawns a worker thread to handle the async task queue.
@@ -32,23 +35,17 @@ pub fn spawn_thread() -> std::thread::JoinHandle<std::convert::Infallible> {
     })
 }
 
-async fn accept_connections(addr: SocketAddrV4, router: &'static Router) -> () {
-    let socket = match TcpListener::bind(addr).await {
-        Ok(socket) => socket,
-        Err(err) => panic!("{err:?}"),
-    };
-
+async fn accept_connections<C: Connector + 'static>(
+    connector: Box<C>,
+    router: &'static Router,
+) -> () {
     loop {
-        let Ok((stream, ..)) = socket.accept().await else {
+        let Ok(stream) = connector.accept().await else {
             println!("Dropped incoming connection");
             continue;
         };
 
-        if let Err(..) = stream.set_nodelay(true) {
-            continue;
-        };
-
-        EXECUTOR.spawn(handle_stream(stream, router)).detach();
+        EXECUTOR.spawn(handle_stream::<C>(stream, router)).detach();
     }
 }
 
@@ -62,12 +59,12 @@ macro_rules! inline_response {
     };
 }
 
-async fn handle_stream(mut stream: smol::net::TcpStream, router: &Router) -> () {
+async fn handle_stream<C: Connector + 'static>(mut stream: C::Stream, router: &Router) -> () {
     loop {
         // let time = std::time::Instant::now();
 
         let buffer = &mut Vec::with_capacity(4000);
-        let Some(header_count) = crate::parse::read_headers(&mut stream, buffer).await else {
+        let Some(header_count) = crate::parse::read_headers::<C>(&mut stream, buffer).await else {
             return;
         };
         buffer.shrink_to_fit();
