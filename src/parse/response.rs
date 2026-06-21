@@ -178,7 +178,7 @@ impl<B, E> Drop for Response<'_, B, E> {
     }
 }
 
-#[doc = include_str!("../../macros/docs/traits/Serialize.md")]
+#[doc = include_str!("../../docs/traits/Serialize.md")]
 pub trait Serialize {
     fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
 }
