@@ -4,6 +4,7 @@ mod tcp;
 pub use tcp::TcpConnector;
 
 mod unix;
+pub use unix::UnixConnector;
 
 pub trait Connector: Send {
     type Error;
