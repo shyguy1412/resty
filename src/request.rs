@@ -6,7 +6,7 @@ use std::{
 use smol::io::AsyncReadExt;
 use url::Url;
 
-use crate::{Error, parse::parse_cookies};
+use crate::{Error, HttpMethod, parse::parse_cookies};
 
 pub type Readable = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>;
 
@@ -15,10 +15,10 @@ pub type Readable = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>;
 /// The request body is read lazily
 pub struct Request<'a, B = ()> {
     pub headers: &'a [httparse::Header<'a>],
-    pub url: Url,
-    pub cookies: Vec<(&'a str, &'a str)>,
+    pub url: &'a Url,
+    pub cookies: &'a Vec<(&'a str, &'a str)>,
     pub path_params: &'a Vec<&'a str>,
-    pub method: &'a str,
+    pub method: HttpMethod,
     pub version: u8,
     body: Option<Box<Result<B, Error>>>,
     readable: &'a mut Readable,
@@ -27,30 +27,13 @@ pub struct Request<'a, B = ()> {
 impl<'a, B: Deserialize> Request<'a, B> {
     pub async fn new(
         request: &'a httparse::Request<'a, 'a>,
+        url: &'a Url,
+        cookies: &'a Vec<(&'a str, &'a str)>,
         path_params: &'a Vec<&'a str>,
         readable: &'a mut Readable,
     ) -> Result<Self, Error> {
-        let host = request
-            .headers
-            .iter()
-            .find_map(|httparse::Header { name, value }| {
-                match name.to_ascii_lowercase() == "host" {
-                    true => from_utf8(value).ok(),
-                    false => None,
-                }
-            })
-            .unwrap_or("localhost");
-
-        let url = request
-            .path
-            .map(|path| format!("http://{host}{}", path))
-            .and_then(|url| Url::parse(&url).ok())
-            .ok_or(Error::ParseError)?;
-
-        let cookies = parse_cookies(request.headers);
-
         Ok(Self {
-            method: request.method.ok_or(Error::ParseError)?,
+            method: request.method.ok_or(Error::ParseError)?.into(),
             url,
             cookies,
             version: request.version.ok_or(Error::ParseError)?,
@@ -108,6 +91,21 @@ impl<B> Deref for Request<'_, B> {
 impl<B> DerefMut for Request<'_, B> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.readable
+    }
+}
+
+impl<'a, 'b: 'a> Request<'b> {
+    pub fn as_typed<B>(&'a mut self) -> Request<'a, B> {
+        Request {
+            headers: self.headers,
+            url: self.url,
+            cookies: self.cookies,
+            path_params: self.path_params,
+            method: self.method,
+            version: self.version,
+            readable: self.readable,
+            body: None,
+        }
     }
 }
 

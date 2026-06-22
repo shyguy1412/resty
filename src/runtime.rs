@@ -1,6 +1,9 @@
-use smol::io::{AsyncReadExt, AsyncWriteExt};
+use std::str::from_utf8;
 
-use crate::{HttpMethod, Router, Socket, routing::HandlerData};
+use smol::io::{AsyncReadExt, AsyncWriteExt};
+use url::Url;
+
+use crate::{HttpMethod, Router, Socket, parse::parse_cookies};
 
 /// Type alias for the Future returned by a Handler
 pub type EndpointTask<'a> =
@@ -73,18 +76,19 @@ async fn handle_stream<S: Socket + 'static>(mut stream: S::Stream, router: &Rout
         if let Err(..) = request.parse(buffer) {
             inline_response!(403 "Malformed Request Headers" on stream with (
                 "Content-Length" => "0"
+                "Connection" => "close"
             ));
             return;
         };
 
-        let Some((handler, path_params)) = request
+        let Some((handlers, path_params)) = request
             .path
-            .and_then(|route| router.route(route))
             .zip(request.method.map(Into::<HttpMethod>::into))
-            .and_then(|((route, params), method)| Some((route.method(method)?, params)))
+            .and_then(|(route, method)| router.handler(route, method))
         else {
             inline_response!(404 "Not Found" on stream with (
                 "Content-Length" => "0"
+                "Connection" => "close"
             ));
             return;
         };
@@ -103,19 +107,50 @@ async fn handle_stream<S: Socket + 'static>(mut stream: S::Stream, router: &Rout
             None => stream.clone().boxed_reader(),
         };
 
-        if let Err(..) = handler(&mut HandlerData {
-            request,
-            path_params,
-            readable,
-            writeable,
-        })
-        .await
-        {
+        let host = request
+            .headers
+            .iter()
+            .find_map(|httparse::Header { name, value }| {
+                match name.to_ascii_lowercase() == "host" {
+                    true => from_utf8(value).ok(),
+                    false => None,
+                }
+            })
+            .unwrap_or("localhost");
+
+        let url = request
+            .path
+            .map(|path| format!("http://{host}{}", path))
+            .and_then(|url| Url::parse(&url).ok())
+            .ok_or(crate::Error::ParseError)
+            .unwrap();
+
+        let cookies = parse_cookies(request.headers);
+
+        let Ok(mut request) =
+            crate::Request::new(&request, &url, &cookies, &path_params, readable).await
+        else {
             inline_response!(500 "Internal Server Error" on stream with (
                 "Content-Length" => "0"
+                "Connection" => "close"
             ));
             return;
         };
+
+        let mut response = crate::Response::new(writeable, &[]);
+
+        for handler in handlers.iter().take(handlers.len()) {
+            // let _ = middleware(&mut request, &mut response).await;
+            if let Err(..) = handler(&mut request, &mut response).await {
+                response.close().await;
+                break;
+                // inline_response!(500 "Internal Server Error" on stream with (
+                //     "Content-Length" => "0"
+                //     "Connection" => "close"
+                // ));
+                // return;
+            };
+        }
 
         //fully consume readable before moving on
         if let Some(length) = content_length

@@ -1,6 +1,8 @@
-mod endpoint;
 #[macro_use]
 mod parse;
+
+mod endpoint;
+mod middleware;
 mod routing;
 
 mod spec;
@@ -33,6 +35,12 @@ pub fn use_path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
     endpoint::endpoint_macro_impl(args, body)
+}
+
+#[doc = include_str!("../docs/macros/middleware.md")]
+#[proc_macro_attribute]
+pub fn middleware(args: TokenStream, body: TokenStream) -> TokenStream {
+    middleware::middleware_macro_impl(args, body)
 }
 
 #[doc = include_str!("../docs/traits/Serialize.md")]

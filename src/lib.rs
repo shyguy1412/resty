@@ -50,6 +50,7 @@ mod response;
 pub use response::{Response, Serialize};
 
 mod routing;
+pub use routing::HandlerOrMiddleware::*;
 
 mod runtime;
 pub use runtime::*;

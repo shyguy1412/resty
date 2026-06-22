@@ -28,7 +28,7 @@ pub struct Response<'a, Body = (), Error = ()> {
     error: PhantomData<Error>,
 }
 
-impl Deref for Response<'_> {
+impl<B, E> Deref for Response<'_, B, E> {
     type Target = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
 
     fn deref(&self) -> &Self::Target {
@@ -36,7 +36,7 @@ impl Deref for Response<'_> {
     }
 }
 
-impl DerefMut for Response<'_> {
+impl<B, E> DerefMut for Response<'_, B, E> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.writeable
     }
@@ -99,8 +99,8 @@ impl<'a, B, E> Response<'a, B, E> {
     }
 
     /// Requires the Status Line to already be sent
-    pub async fn send(&mut self, data: &impl Serialize) -> Result<(), Error> {
-        if self.state < ResponseState::Header {
+    async fn send(&mut self, data: &impl Serialize) -> Result<(), Error> {
+        if self.state != ResponseState::Header {
             return Err(Error::StateError);
         }
 
@@ -126,6 +126,14 @@ impl<'a, B, E> Response<'a, B, E> {
 
         Ok(())
     }
+
+    pub async fn close(&mut self) {
+        if self.state == ResponseState::Done {
+            return;
+        }
+        let _ = self.status(500, "Internal Server Error").await;
+        let _ = self.send(&"").await;
+    }
 }
 
 impl<B: Serialize, E> Response<'_, B, E> {
@@ -144,18 +152,19 @@ impl<B, E: Serialize> Response<'_, B, E> {
     }
 }
 
-impl<B, E> Drop for Response<'_, B, E> {
-    //ensure the response gets properly terminated
-    fn drop(&mut self) {
-        if self.state == ResponseState::Done {
-            return;
+impl<'a, 'b: 'a> Response<'b> {
+    pub fn as_typed<B, E>(
+        &'a mut self,
+        static_headers: &'static [(&'static str, &'static str)],
+    ) -> Response<'a, B, E> {
+        Response {
+            state: self.state,
+            writeable: self.writeable,
+            static_headers: static_headers,
+            once: self.once,
+            body: PhantomData,
+            error: PhantomData,
         }
-        let _ = smol::block_on(async {
-            let _ = self.status(500, "Internal Server Error").await;
-            if let Ok(..) = self.headers(&[("Content-Length", "0")]).await {
-                let _ = self.writeable.write_all(b"\r\n").await;
-            };
-        });
     }
 }
 
