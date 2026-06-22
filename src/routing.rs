@@ -12,7 +12,6 @@ pub type Handler = dyn for<'a> Fn(&'a mut HandlerData<'a>) -> crate::EndpointTas
 ///
 /// Any route segment starting with `[` is considered a path parameter
 /// The route `%404` is used as fallback if no other route could be found
-#[derive(Default)]
 pub struct Router {
     pub(crate) segments: HashMap<&'static str, Router>,
     pub(crate) endpoints: Vec<(u16, &'static Handler)>,
@@ -56,8 +55,15 @@ impl std::fmt::Display for Router {
 }
 
 impl Router {
+    pub fn empty() -> Self {
+        Self {
+            segments: HashMap::new(),
+            endpoints: Vec::new(),
+        }
+    }
+
     pub fn new(route_slices: &[RouteSlice]) -> Self {
-        let mut route_table = Router::default();
+        let mut route_table = Router::empty();
 
         for slice in route_slices {
             route_table.add_route(slice)
@@ -77,11 +83,7 @@ impl Router {
                 _ => current_segment,
             };
 
-            if !segments.contains_key(current_segment) {
-                segments.insert(key, Router::default());
-            }
-
-            current_router = segments.get_mut(key).unwrap()
+            current_router = segments.entry(key).or_insert_with(Router::empty);
         }
 
         current_router.endpoints.push((*method, *handler));
