@@ -81,10 +81,10 @@ pub fn endpoint_macro_impl(args: TokenStream, body: TokenStream) -> TokenStream 
         .nth(0)
         .expect("Handler function is missing a lifetime parameter");
     let handler = quote::quote! {
-        pub fn #fn_ident <#lifetime, '__fn_borrow> (
-            req: &'__fn_borrow mut ::resty::Request<#lifetime>,
-            res: &'__fn_borrow mut ::resty::Response<#lifetime>
-        ) -> ::resty::EndpointTask<'__fn_borrow> {
+        pub fn #fn_ident #generics (
+            mut req: ::resty::Request<#lifetime>,
+            mut res: ::resty::Response<#lifetime>
+        ) -> ::resty::EndpointTask<#lifetime> {
             #endpoint_fn
 
             const STATIC_HEADERS :&[(&str, &str)] = &[#(#static_headers),*];

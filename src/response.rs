@@ -8,7 +8,7 @@ use smol::io::AsyncWriteExt;
 use crate::Error;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-enum ResponseState {
+pub(crate) enum ResponseState {
     Status,
     StaticHeaders,
     Header,
@@ -20,7 +20,7 @@ pub type Writeable = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
 
 /// A response with an optional Body and Error type
 pub struct Response<'a, Body = (), Error = ()> {
-    state: ResponseState,
+    pub(crate) state: ResponseState,
     writeable: &'a mut Writeable,
     static_headers: &'static [(&'static str, &'static str)],
     once: bool,

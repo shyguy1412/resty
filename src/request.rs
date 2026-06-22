@@ -1,12 +1,9 @@
-use std::{
-    ops::{Deref, DerefMut},
-    str::from_utf8,
-};
+use std::ops::{Deref, DerefMut};
 
 use smol::io::AsyncReadExt;
 use url::Url;
 
-use crate::{Error, HttpMethod, parse::parse_cookies};
+use crate::{Error, HttpMethod};
 
 pub type Readable = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send>>;
 

@@ -2,7 +2,7 @@ use proc_macro::{Span, TokenStream};
 use quote::{ToTokens, format_ident};
 use syn::{parse_macro_input, parse_str};
 
-use crate::{compile_error, parse, routing::get_endpoint_path, spec::register_endpoint};
+use crate::{compile_error, parse, routing::get_endpoint_path};
 
 pub fn middleware_macro_impl(args: TokenStream, body: TokenStream) -> TokenStream {
     let endpoint_fn = parse_macro_input!(body as syn::ItemFn);

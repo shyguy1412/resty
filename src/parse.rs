@@ -1,4 +1,5 @@
 use smol::{io::AsyncReadExt, stream::StreamExt};
+use url::Url;
 
 use crate::Socket;
 
@@ -43,8 +44,8 @@ impl std::fmt::Display for HttpMethod {
 }
 
 #[inline(always)]
-pub(crate) async fn read_headers<C: Socket>(
-    stream: &mut C::Stream,
+pub(crate) async fn read_headers<S: Socket>(
+    stream: &mut S::Stream,
     buff: &mut Vec<u8>,
 ) -> Option<usize> {
     let mut header_count: usize = 0; //adjust for overcounting
@@ -68,8 +69,8 @@ pub(crate) async fn read_headers<C: Socket>(
 }
 
 #[inline(always)]
-pub(crate) fn parse_cookies<'a>(headers: &'a [httparse::Header]) -> Vec<(&'a str, &'a str)> {
-    headers
+pub(crate) fn parse_cookies<'a>(req: &httparse::Request<'a, 'a>) -> Vec<(&'a str, &'a str)> {
+    req.headers
         .iter()
         .filter_map(|h| match h.name == "Cookie" {
             true => str::from_utf8(h.value).ok(),
@@ -78,4 +79,21 @@ pub(crate) fn parse_cookies<'a>(headers: &'a [httparse::Header]) -> Vec<(&'a str
         .flat_map(|value| value.split("; "))
         .filter_map(|cookie| cookie.split_once("="))
         .collect()
+}
+
+pub(crate) fn parse_url<'a>(req: &httparse::Request<'a, 'a>) -> Url {
+    let host = req
+        .headers
+        .iter()
+        .find_map(|h| match h.name.to_ascii_lowercase() == "host" {
+            true => str::from_utf8(h.value).ok(),
+            false => None,
+        })
+        .unwrap_or("localhost");
+
+    req.path
+        .map(|path| format!("http://{host}{}", path))
+        .and_then(|url| Url::parse(&url).ok())
+        .ok_or(crate::Error::ParseError)
+        .unwrap()
 }
