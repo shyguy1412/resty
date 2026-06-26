@@ -99,7 +99,8 @@ impl<'a, B, E> Response<'a, B, E> {
     }
 
     /// Requires the Status Line to already be sent
-    async fn send(&mut self, data: &impl Serialize) -> Result<(), Error> {
+    /// Prefer using the typed `ok` and `err` methods
+    pub async fn send(&mut self, data: &impl Serialize) -> Result<(), Error> {
         if self.state != ResponseState::Header {
             return Err(Error::StateError);
         }

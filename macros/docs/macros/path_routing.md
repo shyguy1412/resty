@@ -1,6 +1,11 @@
-# Macro to automaticall route via file path
+# Macro to automatically route via file path
 
 Using path routing allows you to omit the `Path` and `Route` arguments for the `endpoint` macro.
+
+Special Routes:
+
+- %404 sets a fallback handler
+- any segment starting with `[` is treated as dynamic and the segment is resolved as a path parameter. If a dynamic and static route exist at the same depth the static route is guranteed to take precedence.
 
 ## Usage
 
