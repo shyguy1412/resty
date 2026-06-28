@@ -2,35 +2,33 @@ use std::path::PathBuf;
 
 use proc_macro::{TokenStream, TokenTree};
 use quote::format_ident;
-use syn::parse_macro_input;
 
 #[inline(always)]
-pub fn manual_routing(_: TokenStream, body: TokenStream) -> TokenStream {
+pub fn manual_routing(_: TokenStream, body: TokenStream) -> Result<TokenStream, syn::Error> {
     let mut body: Vec<TokenTree> = body.into_iter().collect();
-    let Some(static_decl_ident) = body.get(1).and_then(|tt| match tt {
-        TokenTree::Ident(ident) => Some(syn::Ident::new(&ident.to_string(), ident.span().into())),
-        _ => None,
-    }) else {
-        return syn::Error::new(
+    let static_decl_ident = body
+        .get(1)
+        .and_then(|tt| match tt {
+            TokenTree::Ident(ident) => {
+                Some(syn::Ident::new(&ident.to_string(), ident.span().into()))
+            }
+            _ => None,
+        })
+        .ok_or(syn::Error::new(
             body.get(1)
                 .or(body.get(0))
-                .expect("Must have input")
+                .expect("Must have macro input")
                 .span()
                 .into(),
             "Expected Ident",
-        )
-        .into_compile_error()
-        .into();
-    };
+        ))?;
     let router_ident = format_ident!("__RESTY__ROUTER_{static_decl_ident}");
 
     if let Some(last) = body.last()
         && last.to_string() != ";"
     {
-        return syn::Error::new(last.span().into(), "Expected a ;")
-            .into_compile_error()
-            .into();
-    }
+        return Err(syn::Error::new(last.span().into(), "Expected a ;"));
+    };
 
     body.pop();
 
@@ -40,9 +38,9 @@ pub fn manual_routing(_: TokenStream, body: TokenStream) -> TokenStream {
     stream.extend(Into::<TokenStream>::into(
         quote::quote! {= ::std::sync::LazyLock::new(||::resty::Router::new(&#router_ident));},
     ));
-    let static_decl = parse_macro_input!(stream as syn::ItemStatic);
+    let static_decl: syn::ItemStatic = syn::parse(stream)?;
 
-    quote::quote! {
+    Ok(quote::quote! {
         #[allow(non_snake_case)]
         mod #static_decl_ident {
             use ::resty::__private::*;
@@ -57,37 +55,37 @@ pub fn manual_routing(_: TokenStream, body: TokenStream) -> TokenStream {
         use #static_decl_ident::#router_ident;
         #static_decl
     }
-    .into()
+    .into())
 }
 
 static BASE_PATHS: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
-pub fn path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
-    let path_litstr = parse_macro_input!(args as syn::LitStr);
+pub fn path_routing(args: TokenStream, body: TokenStream) -> Result<TokenStream, syn::Error> {
+    let path_litstr: syn::LitStr = syn::parse(args)?;
 
     let mut body: Vec<TokenTree> = body.into_iter().collect();
-    let Some(static_decl_ident) = body.get(1).and_then(|tt| match tt {
-        TokenTree::Ident(ident) => Some(syn::Ident::new(&ident.to_string(), ident.span().into())),
-        _ => None,
-    }) else {
-        return syn::Error::new(
+    let static_decl_ident = body
+        .get(1)
+        .and_then(|tt| match tt {
+            TokenTree::Ident(ident) => {
+                Some(syn::Ident::new(&ident.to_string(), ident.span().into()))
+            }
+            _ => None,
+        })
+        .ok_or(syn::Error::new(
             body.get(1)
                 .or(body.get(0))
-                .expect("Must have input")
+                .expect("Must have macro input")
                 .span()
                 .into(),
             "Expected Ident",
-        )
-        .into_compile_error()
-        .into();
-    };
+        ))?;
+
     let router_ident = format_ident!("__RESTY__ROUTER_{static_decl_ident}");
 
     if let Some(last) = body.last()
         && last.to_string() != ";"
     {
-        return syn::Error::new(last.span().into(), "Expected a ;")
-            .into_compile_error()
-            .into();
+        return Err(syn::Error::new(last.span().into(), "Expected a ;"));
     }
 
     body.pop();
@@ -98,7 +96,7 @@ pub fn path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
     stream.extend(Into::<TokenStream>::into(
         quote::quote! {= ::std::sync::LazyLock::new(||::resty::Router::new(&#router_ident));},
     ));
-    let static_decl = parse_macro_input!(stream as syn::ItemStatic);
+    let static_decl: syn::ItemStatic = syn::parse(stream)?;
 
     let path = path_litstr.value();
     let path = path.strip_prefix("./").unwrap_or(&path);
@@ -106,7 +104,8 @@ pub fn path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
 
     let span = proc_macro::Span::call_site();
     let source_file = span.local_file();
-    let Some(api_path) = source_file
+
+    let api_path = source_file
         .as_ref()
         .and_then(|file| file.parent())
         .map(|p| p.into())
@@ -115,20 +114,15 @@ pub fn path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
             Some(PathBuf::from(hint))
         })
         .map(|p| p.join(path))
-    else {
-        let error = syn::Error::new(
+        .ok_or(
+            syn::Error::new(
             span.into(),
             "Could not resolve base path for path routing.\nThis is likely due to rust-analyzer not supporting Span::local_file() in proc-macros.\nIf this error only appears in rust-analyzer messages set the RESTY_PATH_ROUTING_HINT environment variable to the base path from which to resolve your resty::use_path_routing macro invocation.",
-        );
-        return error.to_compile_error().into();
-    };
+        )
+        )?;
 
     let _ = BASE_PATHS.lock().map(|mut vec| vec.push(api_path.clone()));
-    let files = match visit_dirs(&api_path).map_err(|e| crate::compile_error(path_litstr.span(), e))
-    {
-        Ok(v) => v,
-        Err(e) => return e,
-    };
+    let files = visit_dirs(&api_path).map_err(|e| syn::Error::new(path_litstr.span(), e))?;
 
     let (paths, idents): (Vec<_>, Vec<_>) = files
         .into_iter()
@@ -157,7 +151,7 @@ pub fn path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
         })
         .collect();
 
-    quote::quote! {
+    Ok(quote::quote! {
         #[path = #path_litstr]
         #[allow(non_snake_case)]
         mod #static_decl_ident {
@@ -178,7 +172,7 @@ pub fn path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
         use #static_decl_ident::#router_ident;
         #static_decl
     }
-    .into()
+    .into())
 }
 
 pub fn get_endpoint_path() -> Option<String> {

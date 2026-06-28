@@ -2,7 +2,6 @@
 mod parse;
 
 mod endpoint;
-mod middleware;
 mod routing;
 
 mod spec;
@@ -13,34 +12,48 @@ use syn::parse_macro_input;
 
 use crate::spec::register_struct;
 
-fn compile_error<E: std::fmt::Display>(span: proc_macro2::Span, err: E) -> TokenStream {
-    syn::Error::new(span, err.to_string())
-        .to_compile_error()
-        .into()
+fn compile_error<E: std::fmt::Display>(err: E) -> syn::Error {
+    syn::Error::new(proc_macro::Span::call_site().into(), err.to_string())
 }
+
+// fn spanned_compile_error<E: std::fmt::Display>(span: proc_macro::Span, err: E) -> syn::Error {
+//     syn::Error::new(span.into(), err.to_string())
+// }
 
 #[doc = include_str!("../docs/macros/manual_routing.md")]
 #[proc_macro_attribute]
 pub fn use_manual_routing(args: TokenStream, body: TokenStream) -> TokenStream {
-    routing::manual_routing(args, body)
+    match routing::manual_routing(args, body) {
+        Ok(ok) => ok,
+        Err(err) => err.to_compile_error().into(),
+    }
 }
 
 #[doc = include_str!("../docs/macros/path_routing.md")]
 #[proc_macro_attribute]
 pub fn use_path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
-    routing::path_routing(args, body)
+    match routing::path_routing(args, body) {
+        Ok(ok) => ok,
+        Err(err) => err.to_compile_error().into(),
+    }
 }
 
 #[doc = include_str!("../docs/macros/endpoint.md")]
 #[proc_macro_attribute]
 pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
-    endpoint::endpoint_macro_impl(args, body)
+    match endpoint::endpoint_macro_impl(args, body) {
+        Ok(ok) => ok,
+        Err(err) => err.to_compile_error().into(),
+    }
 }
 
 #[doc = include_str!("../docs/macros/middleware.md")]
 #[proc_macro_attribute]
 pub fn middleware(args: TokenStream, body: TokenStream) -> TokenStream {
-    middleware::middleware_macro_impl(args, body)
+    match endpoint::middleware_macro_impl(args, body) {
+        Ok(ok) => ok,
+        Err(err) => err.to_compile_error().into(),
+    }
 }
 
 #[doc = include_str!("../docs/traits/Serialize.md")]
