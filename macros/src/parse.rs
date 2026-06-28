@@ -49,9 +49,8 @@ pub fn args(args: TokenStream) -> Result<MacroArguments, syn::Error> {
 
     let args = syn::parse::Parser::parse(parser, args)?;
 
-    let result: Vec<_> = args
-        .into_iter()
-        .filter_map(|meta| match meta {
+    let result =
+        args.into_iter().filter_map(|meta| match meta {
             syn::Meta::Path(..) => None,
             syn::Meta::List(syn::MetaList { tokens, path, .. }) => {
                 Some(path.require_ident().and_then(|ident| {
@@ -65,10 +64,9 @@ pub fn args(args: TokenStream) -> Result<MacroArguments, syn::Error> {
                     .require_ident()
                     .map(|ident| MacroArgument::Single(ident.clone(), meta_name_value.value)),
             ),
-        })
-        .collect();
+        });
 
-    let (args, errors) = collect_errors(result.into_iter());
+    let (args, errors) = collect_errors(result);
 
     combine_errors(errors)?;
 
@@ -174,13 +172,12 @@ fn optional_argument<'a>(
     args.iter()
         .skip(1)
         .map(|arg| arg.ident())
-        .map(|ident| {
-            syn::Error::new(
+        .map(|ident| -> Result<(), syn::Error> {
+            Err(syn::Error::new(
                 ident.span(),
                 format!("Expected at most one `{}` parameter", ident.to_string()),
-            )
+            ))
         })
-        .collect::<Vec<_>>()
         .ok()?;
 
     Ok(args.get(0).map(|arg| *arg))
@@ -194,35 +191,30 @@ fn required_argument<'a>(
         .ok_or_else(|| compile_error(format!("Missing required argument: {arg}")))
 }
 
-trait ResultVector<T> {
+trait ResultIterator<T> {
     fn ok(self) -> Result<Vec<T>, syn::Error>;
 }
 
-impl<T> ResultVector<T> for Vec<Result<T, syn::Error>> {
-    fn ok(self) -> Result<Vec<T>, syn::Error> {
+impl<V, T: IntoIterator<Item = Result<V, syn::Error>>> ResultIterator<V> for T {
+    fn ok(self) -> Result<Vec<V>, syn::Error> {
         let (values, errors) = collect_errors(self.into_iter());
         combine_errors(errors)?;
         Ok(values)
     }
 }
 
-impl ResultVector<()> for Vec<syn::Error> {
-    fn ok(self) -> Result<Vec<()>, syn::Error> {
-        combine_errors(self).map(|_| Vec::new())
-    }
+fn collect_errors<V, E>(it: impl IntoIterator<Item = Result<V, E>>) -> (Vec<V>, Vec<E>) {
+    it.into_iter()
+        .fold((Vec::new(), Vec::new()), |mut collector, next| {
+            match next {
+                Ok(ident) => collector.0.push(ident),
+                Err(err) => collector.1.push(err),
+            };
+            collector
+        })
 }
 
-fn collect_errors<V, E>(it: impl Iterator<Item = Result<V, E>>) -> (Vec<V>, Vec<E>) {
-    it.fold((Vec::new(), Vec::new()), |mut collector, next| {
-        match next {
-            Ok(ident) => collector.0.push(ident),
-            Err(err) => collector.1.push(err),
-        };
-        collector
-    })
-}
-
-fn combine_errors(errors: Vec<syn::Error>) -> Result<(), syn::Error> {
+pub fn combine_errors(errors: Vec<syn::Error>) -> Result<(), syn::Error> {
     if let Some(mut error) = errors.get(0).cloned() {
         error.extend(errors.into_iter().skip(1));
         return Err(error);

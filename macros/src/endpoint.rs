@@ -36,6 +36,26 @@ fn method_byte(methods: &Vec<syn::Expr>) -> Result<syn::Expr, syn::Error> {
     )
 }
 
+macro_rules! combined_errors {
+    ($errs: ident => $first: expr) => {
+        match $first {
+            Ok(ok) => Some(ok),
+            Err(err) => {
+                $errs.push(err);
+                None
+            }
+        }
+    };
+    ($errs:ident => $first:expr, $($rest:expr),+) => {{
+        combined_errors!($errs => $first).zip(combined_errors!($errs => $($rest),*))
+    }};
+    ($($rest:expr),+) => {{
+        let mut errors = Vec::new();
+        let values = combined_errors!(errors => $($rest),* );
+        values.ok_or_else(||crate::parse::combine_errors(errors).expect_err("If values isnt Some there must be an error"))
+    }};
+}
+
 pub fn endpoint_macro_impl(
     args: TokenStream,
     body: TokenStream,
@@ -49,11 +69,15 @@ pub fn endpoint_macro_impl(
         .nth(0)
         .expect("Handler function is missing a lifetime parameter");
 
+    //TODO Make a system to collect parsing errors so they can all be shown at once
     let args = parse::args(args)?;
-    let methods = parse::methods(&args)?;
-    let router = parse::router(&args)?;
-    let static_headers = parse::static_headers(&args)?;
-    let path = parse::path_override(&args)?;
+
+    let (methods, (router, (static_headers, path))) = combined_errors!(
+        parse::methods(&args),
+        parse::router(&args),
+        parse::static_headers(&args),
+        parse::path_override(&args)
+    )?;
 
     let segments = endpoint_segments(path)?;
     let method_byte = method_byte(methods)?;
@@ -109,8 +133,8 @@ pub fn middleware_macro_impl(
         .expect("Handler function is missing a lifetime parameter");
 
     let args = parse::args(args)?;
-    let router = parse::router(&args)?;
-    let path = parse::path_override(&args)?;
+
+    let (router, path) = combined_errors!(parse::router(&args), parse::path_override(&args))?;
 
     let segments = endpoint_segments(path)?;
 
