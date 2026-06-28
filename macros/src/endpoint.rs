@@ -24,7 +24,7 @@ fn endpoint_segments(path: Option<String>) -> Result<Vec<String>, syn::Error> {
     Ok(segments.map(|s| s.to_string()).skip(1).collect())
 }
 
-fn method_byte(methods: &Vec<syn::Expr>) -> Result<syn::Expr, syn::Error> {
+fn method_byte(methods: &Vec<&syn::Expr>) -> Result<syn::Expr, syn::Error> {
     syn::parse(
         quote::quote! {
             {
@@ -80,7 +80,7 @@ pub fn endpoint_macro_impl(
     )?;
 
     let segments = endpoint_segments(path)?;
-    let method_byte = method_byte(methods)?;
+    let method_byte = method_byte(&methods)?;
 
     for method in methods {
         register_endpoint(

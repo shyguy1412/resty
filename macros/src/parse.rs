@@ -26,13 +26,10 @@ impl MacroArgument {
         }
     }
 
-    pub fn list(&self) -> Result<&Vec<syn::Expr>, syn::Error> {
+    pub fn list(&self) -> Vec<&syn::Expr> {
         match self {
-            MacroArgument::Single(ident, ..) => Err(syn::Error::new(
-                ident.span(),
-                "Expected a list parameter, got a single",
-            )),
-            MacroArgument::List(.., expr) => Ok(expr),
+            MacroArgument::Single(.., expr) => vec![expr],
+            MacroArgument::List(.., expr) => Vec::from_iter(expr),
         }
     }
 
@@ -73,8 +70,8 @@ pub fn args(args: TokenStream) -> Result<MacroArguments, syn::Error> {
     Ok(args)
 }
 
-pub fn methods<'a>(args: &'a MacroArguments) -> Result<&'a Vec<syn::Expr>, syn::Error> {
-    required_argument(args, "Method")?.list()
+pub fn methods<'a>(args: &'a MacroArguments) -> Result<Vec<&'a syn::Expr>, syn::Error> {
+    required_argument(args, "Method").map(|methods| methods.list())
 }
 
 pub fn path_override(args: &MacroArguments) -> Result<Option<String>, syn::Error> {
@@ -92,10 +89,7 @@ pub fn path_override(args: &MacroArguments) -> Result<Option<String>, syn::Error
 pub fn static_headers(args: &MacroArguments) -> Result<Vec<syn::Expr>, syn::Error> {
     let headers = repeatable_argument(args, "Header")
         .into_iter()
-        .map(|header| header.list().map(|list| (header.ident(), list)))
-        .collect::<Vec<_>>()
-        .ok()?
-        .into_iter()
+        .map(|header| (header.ident(), header.list()))
         .map(|(ident, header)| match header.len() {
             2 => syn::parse(quote::quote! {(#(#header),*)}.into()),
             n => Err(syn::Error::new(
