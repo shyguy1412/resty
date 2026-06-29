@@ -54,7 +54,7 @@ pub fn endpoint_macro_impl(
         parse::methods(&args),
         parse::router(&args),
         parse::static_headers(&args),
-        parse::path(&args),
+        parse::route(&args),
         parse::responds(&args),
         parse::accepts(&args)
     )?;
@@ -108,9 +108,9 @@ pub fn middleware_macro_impl(
         .expect("Handler function is missing a lifetime parameter");
 
     use parse::MacroArgumentType::*;
-    let args = parse::args(args, Router | Path)?;
+    let args = parse::args(args, Router | Route)?;
 
-    let (router, path) = combined_errors!(parse::router(&args), parse::path(&args))?;
+    let (router, path) = combined_errors!(parse::router(&args), parse::route(&args))?;
 
     let handler = quote::quote! {
         pub fn #fn_ident <#lifetime, '__fn_borrow> (

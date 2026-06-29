@@ -19,7 +19,7 @@ pub enum MacroArgument {
 #[rustfmt::skip]
 #[derive(Clone, Copy, Debug, PartialEq, Hash, Eq)]
 pub enum MacroArgumentType {
-    Path        = 0b00000001,
+    Route       = 0b00000001,
     Router      = 0b00000010,
     Method      = 0b00000100,
     Header      = 0b00001000,
@@ -58,7 +58,7 @@ impl TryFrom<&syn::Ident> for MacroArgumentType {
 
     fn try_from(ident: &syn::Ident) -> Result<Self, Self::Error> {
         match ident.to_string().as_str() {
-            "Path" => Ok(MacroArgumentType::Path),
+            "Route" => Ok(MacroArgumentType::Route),
             "Router" => Ok(MacroArgumentType::Router),
             "Method" => Ok(MacroArgumentType::Method),
             "Header" => Ok(MacroArgumentType::Header),
@@ -67,6 +67,21 @@ impl TryFrom<&syn::Ident> for MacroArgumentType {
             "Summary" => Ok(MacroArgumentType::Summary),
             "Description" => Ok(MacroArgumentType::Description),
             _ => Err(syn::Error::new(ident.span(), format!("Unknown Argument"))),
+        }
+    }
+}
+
+impl From<MacroArgumentType> for &'static str {
+    fn from(value: MacroArgumentType) -> Self {
+        match value {
+            MacroArgumentType::Route => "Route",
+            MacroArgumentType::Router => "Router",
+            MacroArgumentType::Method => "Method",
+            MacroArgumentType::Header => "Header",
+            MacroArgumentType::Accepts => "Accepts",
+            MacroArgumentType::Responds => "Responds",
+            MacroArgumentType::Summary => "Summary",
+            MacroArgumentType::Description => "Description",
         }
     }
 }
@@ -137,11 +152,12 @@ pub fn args(args: TokenStream, fields: u16) -> Result<MacroArguments, syn::Error
 }
 
 pub fn methods<'a>(args: &'a MacroArguments) -> Result<Vec<&'a syn::Expr>, syn::Error> {
-    required_argument(args, "Method").map(|methods| methods.list())
+    required_argument(args, MacroArgumentType::Method).map(|methods| methods.list())
 }
 
-pub fn path(args: &MacroArguments) -> Result<Vec<String>, syn::Error> {
-    let path = optional_argument(args, "Path")?.map_or(Ok(None), |path| path.single().map(Some))?;
+pub fn route(args: &MacroArguments) -> Result<Vec<String>, syn::Error> {
+    let path = optional_argument(args, MacroArgumentType::Route)?
+        .map_or(Ok(None), |path| path.single().map(Some))?;
     let path: Option<LitStr> = path.map_or(Ok(None), |p| p.reparse())?;
     let path = path.map(|p| p.value());
     let path = path.or_else(get_endpoint_path);
@@ -157,7 +173,7 @@ pub fn path(args: &MacroArguments) -> Result<Vec<String>, syn::Error> {
 
     let Some(segments) = segments else {
         return Err(compile_error(
-            "Can not determine endpoint route. Maybe you are missing a Path directive?",
+            "Can not infer route. Maybe you are missing a Route directive?",
         ));
     };
 
@@ -165,7 +181,7 @@ pub fn path(args: &MacroArguments) -> Result<Vec<String>, syn::Error> {
 }
 
 pub fn static_headers(args: &MacroArguments) -> Result<Vec<syn::Expr>, syn::Error> {
-    let headers = repeatable_argument(args, "Header")
+    let headers = repeatable_argument(args, MacroArgumentType::Header)
         .into_iter()
         .map(|header| (header.ident(), header.list()))
         .map(|(ident, header)| match header.len() {
@@ -182,7 +198,7 @@ pub fn static_headers(args: &MacroArguments) -> Result<Vec<syn::Expr>, syn::Erro
 }
 
 pub fn accepts(args: &MacroArguments) -> Result<Vec<syn::ExprBlock>, syn::Error> {
-    optional_argument(args, "Accepts")?
+    optional_argument(args, MacroArgumentType::Accepts)?
         .map(|arg| arg.list())
         .unwrap_or(vec![])
         .into_iter()
@@ -202,7 +218,7 @@ pub fn accepts(args: &MacroArguments) -> Result<Vec<syn::ExprBlock>, syn::Error>
 }
 
 pub fn responds(args: &MacroArguments) -> Result<Vec<syn::ExprBlock>, syn::Error> {
-    Ok(repeatable_argument(args, "Responds")
+    Ok(repeatable_argument(args, MacroArgumentType::Responds)
         .into_iter()
         .map(|arg| (arg.list(), arg.ident()))
         .map(|(list, ident)| match list.len() {
@@ -238,7 +254,7 @@ pub fn responds(args: &MacroArguments) -> Result<Vec<syn::ExprBlock>, syn::Error
 }
 
 pub fn router(args: &MacroArguments) -> Result<syn::Path, syn::Error> {
-    let Some(router) = optional_argument(args, "Router")? else {
+    let Some(router) = optional_argument(args, MacroArgumentType::Router)? else {
         return match routing::get_endpoint_path().is_some()
         //workaround for rust-analyzer
             || proc_macro::Span::call_site().local_file().is_none()
@@ -272,18 +288,23 @@ pub fn meta_list(tokens: TokenStream) -> Result<Vec<syn::Expr>, syn::Error> {
     Ok(args.into_iter().collect())
 }
 
-fn repeatable_argument<'a>(args: &'a MacroArguments, arg: &str) -> Vec<&'a MacroArgument> {
+fn repeatable_argument<'a>(
+    args: &'a MacroArguments,
+    arg: MacroArgumentType,
+) -> Vec<&'a MacroArgument> {
     args.iter()
-        .filter_map(|macro_arg| match macro_arg.ident().to_string() == arg {
-            true => Some(macro_arg),
-            false => None,
+        .filter_map(|macro_arg| {
+            match macro_arg.ident().to_string().as_str() == Into::<&str>::into(arg) {
+                true => Some(macro_arg),
+                false => None,
+            }
         })
         .collect()
 }
 
 fn optional_argument<'a>(
     args: &'a MacroArguments,
-    arg: &str,
+    arg: MacroArgumentType,
 ) -> Result<Option<&'a MacroArgument>, syn::Error> {
     let args = repeatable_argument(args, arg);
 
@@ -303,10 +324,14 @@ fn optional_argument<'a>(
 
 fn required_argument<'a>(
     args: &'a MacroArguments,
-    arg: &str,
+    arg: MacroArgumentType,
 ) -> Result<&'a MacroArgument, syn::Error> {
-    optional_argument(args, arg)?
-        .ok_or_else(|| compile_error(format!("Missing required argument: {arg}")))
+    optional_argument(args, arg)?.ok_or_else(|| {
+        compile_error(format!(
+            "Missing required argument: {}",
+            Into::<&str>::into(arg)
+        ))
+    })
 }
 
 trait ResultIterator<T> {
