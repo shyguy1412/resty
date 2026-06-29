@@ -69,8 +69,7 @@ pub fn endpoint_macro_impl(
         .nth(0)
         .expect("Handler function is missing a lifetime parameter");
 
-    //TODO Make a system to collect parsing errors so they can all be shown at once
-    let args = parse::args(args)?;
+    let args = parse::args(args, u16::MAX)?;
 
     let (methods, (router, (static_headers, (path, (responds, accepts))))) = combined_errors!(
         parse::methods(&args),
@@ -130,7 +129,8 @@ pub fn middleware_macro_impl(
         .nth(0)
         .expect("Handler function is missing a lifetime parameter");
 
-    let args = parse::args(args)?;
+    use parse::MacroArgumentType::*;
+    let args = parse::args(args, Router | Path)?;
 
     let (router, path) = combined_errors!(parse::router(&args), parse::path_override(&args))?;
 

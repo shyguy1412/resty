@@ -1,5 +1,8 @@
+use std::ops::BitOr;
+
 use proc_macro::TokenStream;
 use quote::ToTokens;
+use syn::spanned::Spanned;
 
 use crate::compile_error;
 
@@ -7,6 +10,62 @@ pub type MacroArguments = Vec<MacroArgument>;
 pub enum MacroArgument {
     Single(syn::Ident, syn::Expr),
     List(syn::Ident, Vec<syn::Expr>),
+}
+
+#[repr(u16)]
+#[rustfmt::skip]
+#[derive(Clone, Copy, Debug, PartialEq, Hash, Eq)]
+pub enum MacroArgumentType {
+    Path        = 0b00000001,
+    Router      = 0b00000010,
+    Method      = 0b00000100,
+    Header      = 0b00001000,
+    Accepts     = 0b00010000,
+    Responds    = 0b00100000,
+    Summary     = 0b01000000,
+    Description = 0b10000000,
+}
+
+impl BitOr for MacroArgumentType {
+    type Output = u16;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        self as u16 | rhs as u16
+    }
+}
+
+impl BitOr<u16> for MacroArgumentType {
+    type Output = u16;
+
+    fn bitor(self, rhs: u16) -> Self::Output {
+        self as u16 | rhs
+    }
+}
+
+impl BitOr<MacroArgumentType> for u16 {
+    type Output = u16;
+
+    fn bitor(self, rhs: MacroArgumentType) -> Self::Output {
+        self | rhs as u16
+    }
+}
+
+impl TryFrom<&syn::Ident> for MacroArgumentType {
+    type Error = syn::Error;
+
+    fn try_from(ident: &syn::Ident) -> Result<Self, Self::Error> {
+        match ident.to_string().as_str() {
+            "Path" => Ok(MacroArgumentType::Path),
+            "Router" => Ok(MacroArgumentType::Router),
+            "Method" => Ok(MacroArgumentType::Method),
+            "Header" => Ok(MacroArgumentType::Header),
+            "Accepts" => Ok(MacroArgumentType::Accepts),
+            "Responds" => Ok(MacroArgumentType::Responds),
+            "Summary" => Ok(MacroArgumentType::Summary),
+            "Description" => Ok(MacroArgumentType::Description),
+            _ => Err(syn::Error::new(ident.span(), format!("Unknown Argument"))),
+        }
+    }
 }
 
 impl MacroArgument {
@@ -39,35 +98,39 @@ impl MacroArgument {
             MacroArgument::List(ident, ..) => ident,
         }
     }
+
+    pub fn validate(self, fields: u16) -> Result<Self, syn::Error> {
+        let ident = self.ident();
+        let ty: MacroArgumentType = ident.try_into()?;
+        if (ty as u16) & fields == 0 {
+            return Err(syn::Error::new(ident.span(), "Invalid Argument"));
+        }
+        Ok(self)
+    }
 }
 
-pub fn args(args: TokenStream) -> Result<MacroArguments, syn::Error> {
+pub fn args(args: TokenStream, fields: u16) -> Result<MacroArguments, syn::Error> {
     let parser = syn::punctuated::Punctuated::<syn::Meta, syn::token::Comma>::parse_terminated;
 
-    let args = syn::parse::Parser::parse(parser, args)?;
-
-    let result =
-        args.into_iter().filter_map(|meta| match meta {
-            syn::Meta::Path(..) => None,
+    syn::parse::Parser::parse(parser, args)?
+        .into_iter()
+        .map(|meta| match meta {
+            syn::Meta::Path(path) => Err(syn::Error::new(path.span(), "Invalid Argument")),
             syn::Meta::List(syn::MetaList { tokens, path, .. }) => {
-                Some(path.require_ident().and_then(|ident| {
+                path.require_ident().and_then(|ident| {
                     Ok(meta_list(tokens.into())
                         .map(|list| MacroArgument::List(ident.clone(), list))?)
-                }))
+                })
             }
-            syn::Meta::NameValue(meta_name_value) => Some(
-                meta_name_value
-                    .path
-                    .require_ident()
-                    .map(|ident| MacroArgument::Single(ident.clone(), meta_name_value.value)),
-            ),
-        });
-
-    let (args, errors) = collect_errors(result);
-
-    combine_errors(errors)?;
-
-    Ok(args)
+            syn::Meta::NameValue(meta_name_value) => meta_name_value
+                .path
+                .require_ident()
+                .map(|ident| MacroArgument::Single(ident.clone(), meta_name_value.value)),
+        })
+        .ok()?
+        .into_iter()
+        .map(|arg| arg.validate(fields))
+        .ok()
 }
 
 pub fn methods<'a>(args: &'a MacroArguments) -> Result<Vec<&'a syn::Expr>, syn::Error> {
