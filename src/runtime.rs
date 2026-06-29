@@ -136,6 +136,8 @@ async fn handle_request<S: Socket + 'static>(
         }
     }
 
+    response.close().await;
+
     //fully consume readable before moving on
     if let Some(length) = content_length
         && let Ok(1) = readable.read(&mut [0]).await
