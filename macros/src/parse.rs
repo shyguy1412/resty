@@ -4,10 +4,7 @@ use proc_macro::TokenStream;
 use quote::{ToTokens, format_ident};
 use syn::{LitStr, spanned::Spanned};
 
-use crate::{
-    compile_error,
-    routing::{self, get_endpoint_path},
-};
+use crate::routing::get_endpoint_path;
 
 pub type MacroArguments = Vec<MacroArgument>;
 pub enum MacroArgument {
@@ -172,7 +169,8 @@ pub fn route(args: &MacroArguments) -> Result<Vec<String>, syn::Error> {
         .map(|p| p.split("/"));
 
     let Some(segments) = segments else {
-        return Err(compile_error(
+        return Err(syn::Error::new(
+            proc_macro::Span::call_site().into(),
             "Can not infer route. Maybe you are missing a Route directive?",
         ));
     };
@@ -255,7 +253,7 @@ pub fn responds(args: &MacroArguments) -> Result<Vec<syn::ExprBlock>, syn::Error
 
 pub fn router(args: &MacroArguments) -> Result<syn::Path, syn::Error> {
     let Some(router) = optional_argument(args, MacroArgumentType::Router)? else {
-        return match routing::get_endpoint_path().is_some()
+        return match get_endpoint_path().is_some()
         //workaround for rust-analyzer
             || proc_macro::Span::call_site().local_file().is_none()
         {
@@ -327,10 +325,10 @@ fn required_argument<'a>(
     arg: MacroArgumentType,
 ) -> Result<&'a MacroArgument, syn::Error> {
     optional_argument(args, arg)?.ok_or_else(|| {
-        compile_error(format!(
-            "Missing required argument: {}",
-            Into::<&str>::into(arg)
-        ))
+        syn::Error::new(
+            proc_macro::Span::call_site().into(),
+            format!("Missing required argument: {}", Into::<&str>::into(arg)),
+        )
     })
 }
 

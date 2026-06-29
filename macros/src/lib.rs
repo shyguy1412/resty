@@ -10,10 +10,6 @@ use syn::{DeriveInput, parse_macro_input};
 
 use crate::spec::register_struct;
 
-fn compile_error<E: std::fmt::Display>(err: E) -> syn::Error {
-    syn::Error::new(proc_macro::Span::call_site().into(), err.to_string())
-}
-
 #[doc = include_str!("../docs/macros/manual_routing.md")]
 #[proc_macro_attribute]
 pub fn manual_routing(args: TokenStream, body: TokenStream) -> TokenStream {
@@ -96,10 +92,12 @@ pub fn derive_resty_deserialize(input: TokenStream) -> TokenStream {
     .into()
 }
 
+/// Mark a struct to be documented as openapi schema
 #[proc_macro_attribute]
 pub fn public(_: TokenStream, body: TokenStream) -> TokenStream {
     let item_struct = parse_macro_input!(body as syn::ItemStruct);
     let ident = &item_struct.ident;
+
     register_struct(&item_struct);
 
     quote::quote! {
