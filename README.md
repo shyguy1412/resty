@@ -1,6 +1,25 @@
-# Resty
+# resty
 
-Resty is a fast and lightweight framework for concurrent and multithreadable REST APIs.
+resty is a fast and lightweight framework for concurrent and multithreadable REST APIs.
+
+Its capable of manual routing aswell as path based routing similiar to Next.js or Tanstack Router.
+It also capable of generating a JSON description of the API that can be used for client snippet and documentation generation.
+To do so set `RESTY_DECL_GEN=output.json` as environment variable during compilation.
+
+Known issues with rust-analyzer:
+
+rust-analyzer currently does not support getting the sourcefile path of a Span.
+This is vital for path based routing and can be worked around by setting `RESTY_PATH_ROUTING_HINT` to the base directory of your API routes.
+
+Example settings for vscode
+
+```json
+{
+    "rust-analyzer.server.extraEnv": {
+        "RESTY_PATH_ROUTING_HINT": "src/routes/"
+    }
+}
+```
 
 ## Example
 
@@ -9,12 +28,13 @@ Resty is a fast and lightweight framework for concurrent and multithreadable RES
 static ROUTER: LazyLock<Router>;
 
 #[resty::endpoint(
+    Route("/"),
     Router(ROUTER),
-    Path("/"),
     Method(GET),
+    Responds(200, String)
     Header("Content-Type", "text/html; charset=utf-8")
 )]
-async fn get_hello_world<'a>(_req: &mut Request<'a>, res: &mut Response<'a, &'static str>) -> resty::Result {
+async fn get_hello_world<'a>(_req: &mut Request<'a>, res: &mut Response<'a>) -> resty::Result {
     res.ok(&"Hello World!").await?;
 
     Ok(())
