@@ -84,7 +84,7 @@ impl<'a> Response<'a> {
             self.writeable
                 .write_all(&header)
                 .await
-                .map_err(|e| Error::WriteError(e))?;
+                .map_err(|e| Error::WriteError(e.to_string()))?;
         }
 
         Ok(())
@@ -102,11 +102,13 @@ impl<'a> Response<'a> {
         self.writeable
             .write_all(&format!("Content-Length: {}\r\n\r\n", data.len()).into_bytes())
             .await
+            .map_err(|e| e.to_string())
             .map_err(Error::WriteError)?;
 
         self.writeable
             .write_all(&data)
             .await
+            .map_err(|e| e.to_string())
             .map_err(Error::WriteError)?;
 
         let _ = self.writeable.flush().await;

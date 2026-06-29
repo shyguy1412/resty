@@ -103,6 +103,26 @@ pub fn static_headers(args: &MacroArguments) -> Result<Vec<syn::Expr>, syn::Erro
     Ok(headers)
 }
 
+pub fn accepts(args: &MacroArguments) -> Result<Vec<syn::ExprBlock>, syn::Error> {
+    optional_argument(args, "Accepts")?
+        .map(|arg| arg.list())
+        .unwrap_or(vec![])
+        .into_iter()
+        .map(|accepts| {
+            syn::parse(
+                quote::quote! {
+                    {
+                        fn __doc_validate<T: ::resty::__private::Public>() {
+                            __doc_validate::<#accepts>();
+                        };
+                    }
+                }
+                .into(),
+            )
+        })
+        .ok()
+}
+
 pub fn responds(args: &MacroArguments) -> Result<Vec<syn::ExprBlock>, syn::Error> {
     Ok(repeatable_argument(args, "Responds")
         .into_iter()

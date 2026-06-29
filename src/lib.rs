@@ -78,10 +78,10 @@ pub use socket::*;
 pub use resty_macros::*;
 pub use routing::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Error {
     SerializeError,
-    WriteError(std::io::Error),
+    WriteError(String),
     StateError,
     InvalidStatus,
     MissingContentLength,

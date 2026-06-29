@@ -72,12 +72,13 @@ pub fn endpoint_macro_impl(
     //TODO Make a system to collect parsing errors so they can all be shown at once
     let args = parse::args(args)?;
 
-    let (methods, (router, (static_headers, (path, responds)))) = combined_errors!(
+    let (methods, (router, (static_headers, (path, (responds, accepts))))) = combined_errors!(
         parse::methods(&args),
         parse::router(&args),
         parse::static_headers(&args),
         parse::path_override(&args),
-        parse::responds(&args)
+        parse::responds(&args),
+        parse::accepts(&args)
     )?;
 
     let segments = endpoint_segments(path)?;
@@ -91,13 +92,14 @@ pub fn endpoint_macro_impl(
         )
     }
     let handler = quote::quote! {
-        pub fn #fn_ident #generics (
-            mut req: ::resty::Request<#lifetime>,
-            mut res: ::resty::Response<#lifetime>
-        ) -> ::resty::EndpointTask<#lifetime> {
+        pub fn #fn_ident <#lifetime, '__fn_borrow> (
+            req: &'__fn_borrow mut ::resty::Request<#lifetime>,
+            res: &'__fn_borrow mut ::resty::Response<#lifetime>
+        ) -> ::resty::EndpointTask<'__fn_borrow> {
             #endpoint_fn;
 
             #(#responds)*
+            #(#accepts)*
 
             const STATIC_HEADERS :&[(&str, &str)] = &[#(#static_headers),*];
 
