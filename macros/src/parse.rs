@@ -103,6 +103,42 @@ pub fn static_headers(args: &MacroArguments) -> Result<Vec<syn::Expr>, syn::Erro
     Ok(headers)
 }
 
+pub fn responds(args: &MacroArguments) -> Result<Vec<syn::ExprBlock>, syn::Error> {
+    Ok(repeatable_argument(args, "Responds")
+        .into_iter()
+        .map(|arg| (arg.list(), arg.ident()))
+        .map(|(list, ident)| match list.len() {
+            2 => Ok((list[0], list[1])),
+            n => Err(syn::Error::new(
+                ident.span(),
+                format!("Expected 2 arguments, got {n}"),
+            )),
+        })
+        .ok()?
+        .into_iter()
+        .map(|(code, ty)| {
+            Ok((
+                syn::parse::<syn::LitInt>(code.to_token_stream().into())?,
+                syn::parse::<syn::Path>(ty.to_token_stream().into())?,
+            ))
+        })
+        .ok()?
+        .into_iter()
+        .map(|(code, ty)| {
+            syn::parse(
+                quote::quote! {
+                    {
+                        fn __doc_validate<T: ::resty::__private::Public>(code:u16) {
+                            __doc_validate::<#ty>(#code);
+                        };
+                    }
+                }
+                .into(),
+            )
+        })
+        .ok()?)
+}
+
 pub fn router(args: &MacroArguments) -> Result<syn::Path, syn::Error> {
     let Some(router) = optional_argument(args, "Router")? else {
         return syn::parse_str("super::__RESTY__ROUTER");
@@ -119,33 +155,6 @@ pub fn meta_list(tokens: TokenStream) -> Result<Vec<syn::Expr>, syn::Error> {
     let args = syn::parse::Parser::parse(parser, tokens)?;
 
     Ok(args.into_iter().collect())
-}
-
-macro_rules! parse_derive_attr {
-    ($attr: literal in $input:ident else $msg: literal) => {{
-        let ast = ::syn::parse_macro_input!($input as ::syn::DeriveInput);
-        let tokens = ast
-            .attrs
-            .iter()
-            .find(|attr| attr.path().to_token_stream().to_string() == $attr)
-            .map_or(Ok(None), |attr| attr.meta.require_list().map(Some))
-            .map(|r| r.map(|list| list.tokens.to_token_stream().into()));
-
-        let tokens = match tokens {
-            Ok(v) => v,
-            Err(err) => return compile_error(err).to_compile_error().into(),
-        };
-
-        let Some(tokens) = tokens else {
-            return compile_error($msg).to_compile_error().into();
-        };
-
-        (
-            ::syn::parse_macro_input!(tokens as syn::Path),
-            ast.ident,
-            ast.generics,
-        )
-    }};
 }
 
 fn repeatable_argument<'a>(args: &'a MacroArguments, arg: &str) -> Vec<&'a MacroArgument> {
@@ -215,4 +224,31 @@ pub fn combine_errors(errors: Vec<syn::Error>) -> Result<(), syn::Error> {
     }
 
     return Ok(());
+}
+
+pub fn parse_derive_helper<P: syn::parse::Parse>(
+    helper: &str,
+    input: TokenStream,
+) -> Result<(P, syn::DeriveInput), syn::Error> {
+    let ast: syn::DeriveInput = syn::parse(input)?;
+    let tokens = ast
+        .attrs
+        .iter()
+        .find(|attr| attr.path().to_token_stream().to_string() == helper)
+        .map_or(Ok(None), |attr| attr.meta.require_list().map(Some))
+        .map(|r| r.map(|list| list.tokens.to_token_stream().into()));
+
+    let tokens = match tokens {
+        Ok(v) => v,
+        Err(err) => return Err(syn::Error::new(ast.ident.span(), err)),
+    };
+
+    let Some(tokens) = tokens else {
+        return Err(syn::Error::new(
+            ast.ident.span(),
+            format!("{} attribute required", helper),
+        ));
+    };
+
+    Ok((syn::parse(tokens)?, ast))
 }

@@ -95,7 +95,7 @@ async fn handle_request<S: Socket + 'static>(
         return Err(error!(400, "Bad Request"));
     };
 
-    let Some((handler, path_params, middlewares)) = request
+    let Some((handlers, path_params)) = request
         .path
         .zip(request.method.map(Into::<HttpMethod>::into))
         .and_then(|(route, method)| router.handler(route, method))
@@ -125,23 +125,15 @@ async fn handle_request<S: Socket + 'static>(
     let writeable = &mut stream.clone().boxed_writer();
     let mut response = crate::Response::new(writeable, &[]);
 
-    for middleware in middlewares {
-        // let _ = middleware(&mut request, &mut response).await;
-        if let Err(..) = middleware(&mut request, &mut response).await {
+    for handler in handlers {
+        // let _ = handler(&mut request, &mut response).await;
+        if let Err(..) = handler(&mut request, &mut response).await {
             return Err(error!(500, "Internal Server Error"));
         };
 
         if response.state == ResponseState::Done {
-            return Ok(());
+            break;
         }
-    }
-
-    if let Some(handler) = handler {
-        if let Err(..) = handler(request, response).await {
-            return Err(error!(500, "Internal Server Error"));
-        };
-    } else {
-        response.close().await;
     }
 
     //fully consume readable before moving on

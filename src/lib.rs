@@ -87,7 +87,8 @@ pub enum Error {
     MissingContentLength,
     InvalidContentLength,
     ReadError,
-    ParseError,
+    ParseError(String),
+    RequestError,
     UnTypedRequest,
 }
 
@@ -99,12 +100,13 @@ impl std::fmt::Display for Error {
             Error::MissingContentLength => write!(f, "MissingContentLength"),
             Error::InvalidContentLength => write!(f, "InvalidContentLength"),
             Error::ReadError => write!(f, "ReadError"),
-            Error::ParseError => write!(f, "ParseError"),
+            Error::ParseError(e) => write!(f, "ParseError({e})"),
             Error::UnTypedRequest => write!(f, "UnTypedRequest"),
             Error::SerializeError => write!(f, "SerializeError"),
             Error::WriteError(e) => write!(f, "WriteError({e})"),
             Error::StateError => write!(f, "StateError"),
             Error::InvalidStatus => write!(f, "InvalidStatus"),
+            Error::RequestError => write!(f, "RequestError"),
         }
     }
 }
@@ -114,4 +116,8 @@ pub type Result = std::result::Result<(), Error>;
 #[doc(hidden)]
 pub mod __private {
     pub use linkme;
+
+    /// This trait is used as a marker for publicly exported structs
+    /// this way the documentation can validate that all documented structs are known
+    pub trait Public {}
 }

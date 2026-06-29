@@ -72,11 +72,12 @@ pub fn endpoint_macro_impl(
     //TODO Make a system to collect parsing errors so they can all be shown at once
     let args = parse::args(args)?;
 
-    let (methods, (router, (static_headers, path))) = combined_errors!(
+    let (methods, (router, (static_headers, (path, responds)))) = combined_errors!(
         parse::methods(&args),
         parse::router(&args),
         parse::static_headers(&args),
-        parse::path_override(&args)
+        parse::path_override(&args),
+        parse::responds(&args)
     )?;
 
     let segments = endpoint_segments(path)?;
@@ -96,19 +97,14 @@ pub fn endpoint_macro_impl(
         ) -> ::resty::EndpointTask<#lifetime> {
             #endpoint_fn;
 
+            #(#responds)*
+
             const STATIC_HEADERS :&[(&str, &str)] = &[#(#static_headers),*];
 
             Box::pin(async move {
-                let req = &mut req.as_typed();
-                let res = &mut res.as_typed(STATIC_HEADERS);
-
-                let result = #fn_ident(req, res).await;
-                res.close().await;
-                result?;
-
+                #fn_ident(req, res).await?;
                 Ok(())
             })
-
         }
         use ::resty::__private::*;
         #[linkme::distributed_slice(#router)]

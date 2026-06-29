@@ -6,9 +6,8 @@ use crate::{HttpMethod, Request, Response};
 ///
 /// This is not generally used directly since the `#[endpoint]` macro wraps your
 /// async function to comply with this Trait
-type Handler = dyn for<'a> Fn(Request<'a>, Response<'a>) -> crate::EndpointTask<'a> + Sync;
-
-type Middleware =
+// type Handler = dyn for<'a> Fn(Request<'a>, Response<'a>) -> crate::EndpointTask<'a> + Sync;
+type Handler =
     dyn for<'a, 'b> Fn(&'b mut Request<'a>, &'b mut Response<'a>) -> crate::EndpointTask<'b> + Sync;
 
 /// A router that routes a path to an endpoint while resolving path parameters
@@ -18,7 +17,7 @@ type Middleware =
 pub struct Router {
     pub(crate) segments: HashMap<&'static str, Router>,
     pub(crate) endpoints: Vec<(&'static Handler, u16)>,
-    pub(crate) middleware: Option<&'static Middleware>,
+    pub(crate) middleware: Option<&'static Handler>,
 }
 
 impl std::fmt::Debug for Router {
@@ -110,7 +109,7 @@ impl Router {
     pub fn route<'a>(
         &'a self,
         path: &'a str,
-    ) -> Option<(&'a Router, Vec<&'a str>, Vec<&'static Middleware>)> {
+    ) -> Option<(&'a Router, Vec<&'a str>, Vec<&'static Handler>)> {
         let mut path_parameters = vec![];
         let mut middlewares = vec![];
         let mut segments = path
@@ -162,16 +161,14 @@ impl Router {
         &'a self,
         path: &'a str,
         method: HttpMethod,
-    ) -> Option<(
-        Option<&'static Handler>,
-        Vec<&'a str>,
-        Vec<&'static Middleware>,
-    )> {
-        let (route, params, middlewares) = self.route(path)?;
+    ) -> Option<(Vec<&'static Handler>, Vec<&'a str>)> {
+        let (route, params, mut middlewares) = self.route(path)?;
 
         let handler = route.method(method);
 
-        Some((handler, params, middlewares))
+        handler.map(|handler| middlewares.push(handler));
+
+        Some((middlewares, params))
     }
 
     pub fn method(&self, method: HttpMethod) -> Option<&'static Handler> {
@@ -186,7 +183,7 @@ impl Router {
 
 pub enum HandlerOrMiddleware {
     Handler(&'static Handler, u16),
-    Middleware(&'static Middleware),
+    Middleware(&'static Handler),
 }
 
 /// Type alias for the description of a Route

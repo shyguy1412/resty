@@ -1,7 +1,4 @@
-use std::{
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 
 use smol::io::AsyncWriteExt;
 
@@ -18,17 +15,14 @@ pub(crate) enum ResponseState {
 
 pub type Writeable = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
 
-/// A response with an optional Body and Error type
-pub struct Response<'a, Body = (), Error = ()> {
+pub struct Response<'a> {
     pub(crate) state: ResponseState,
     writeable: &'a mut Writeable,
     static_headers: &'static [(&'static str, &'static str)],
     once: bool,
-    body: PhantomData<Body>,
-    error: PhantomData<Error>,
 }
 
-impl<B, E> Deref for Response<'_, B, E> {
+impl Deref for Response<'_> {
     type Target = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
 
     fn deref(&self) -> &Self::Target {
@@ -36,13 +30,13 @@ impl<B, E> Deref for Response<'_, B, E> {
     }
 }
 
-impl<B, E> DerefMut for Response<'_, B, E> {
+impl DerefMut for Response<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.writeable
     }
 }
 
-impl<'a, B, E> Response<'a, B, E> {
+impl<'a> Response<'a> {
     pub fn new(
         writeable: &'a mut Writeable,
         static_headers: &'static [(&'static str, &'static str)],
@@ -52,8 +46,6 @@ impl<'a, B, E> Response<'a, B, E> {
             writeable,
             static_headers,
             once: false,
-            body: PhantomData,
-            error: PhantomData,
         }
     }
 
@@ -99,7 +91,7 @@ impl<'a, B, E> Response<'a, B, E> {
     }
 
     /// Requires the Status Line to already be sent
-    /// Prefer using the typed `ok` and `err` methods
+    /// Prefer using the `ok` and `err` methods
     pub async fn send(&mut self, data: &impl Serialize) -> Result<(), Error> {
         if self.state != ResponseState::Header {
             return Err(Error::StateError);
@@ -128,44 +120,23 @@ impl<'a, B, E> Response<'a, B, E> {
         Ok(())
     }
 
+    pub async fn ok(&mut self, body: &impl Serialize) -> Result<(), Error> {
+        self.status(200, "OK").await?;
+        self.send(body).await
+    }
+
+    pub async fn err(&mut self, status: (u16, &str), err: &impl Serialize) -> Result<(), Error> {
+        let (code, reason) = status;
+        self.status(code, reason).await?;
+        self.send(err).await
+    }
+
     pub async fn close(&mut self) {
         if self.state == ResponseState::Done {
             return;
         }
         let _ = self.status(500, "Internal Server Error").await;
         let _ = self.send(&"").await;
-    }
-}
-
-impl<B: Serialize, E> Response<'_, B, E> {
-    /// Send a response with 200 OK
-    pub async fn ok(&mut self, body: &B) -> Result<(), Error> {
-        self.status(200, "OK").await?;
-        self.send(body).await
-    }
-}
-impl<B, E: Serialize> Response<'_, B, E> {
-    //Send an error with a given code and reason
-    pub async fn err(&mut self, status: (u16, &str), err: &E) -> Result<(), Error> {
-        let (code, reason) = status;
-        self.status(code, reason).await?;
-        self.send(err).await
-    }
-}
-
-impl<'a, 'b: 'a> Response<'b> {
-    pub fn as_typed<B, E>(
-        &'a mut self,
-        static_headers: &'static [(&'static str, &'static str)],
-    ) -> Response<'a, B, E> {
-        Response {
-            state: self.state,
-            writeable: self.writeable,
-            static_headers: static_headers,
-            once: self.once,
-            body: PhantomData,
-            error: PhantomData,
-        }
     }
 }
 

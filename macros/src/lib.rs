@@ -1,4 +1,3 @@
-#[macro_use]
 mod parse;
 
 mod endpoint;
@@ -7,18 +6,13 @@ mod routing;
 mod spec;
 
 use proc_macro::TokenStream;
-use quote::ToTokens;
-use syn::parse_macro_input;
+use syn::{DeriveInput, parse_macro_input};
 
 use crate::spec::register_struct;
 
 fn compile_error<E: std::fmt::Display>(err: E) -> syn::Error {
     syn::Error::new(proc_macro::Span::call_site().into(), err.to_string())
 }
-
-// fn spanned_compile_error<E: std::fmt::Display>(span: proc_macro::Span, err: E) -> syn::Error {
-//     syn::Error::new(span.into(), err.to_string())
-// }
 
 #[doc = include_str!("../docs/macros/manual_routing.md")]
 #[proc_macro_attribute]
@@ -59,10 +53,15 @@ pub fn middleware(args: TokenStream, body: TokenStream) -> TokenStream {
 #[doc = include_str!("../docs/traits/Serialize.md")]
 #[proc_macro_derive(Serialize, attributes(serializer))]
 pub fn derive_resty_serialize(input: TokenStream) -> TokenStream {
-    let (serializer, ident, generics) = parse_derive_attr!(
-        "serializer" in input
-        else "serializer attribute required for deriving Serialize"
-    );
+    let (
+        serializer,
+        DeriveInput {
+            ident, generics, ..
+        },
+    ) = match parse::parse_derive_helper::<syn::Path>("serializer", input) {
+        Ok(v) => v,
+        Err(e) => return e.into_compile_error().into(),
+    };
 
     quote::quote! {
     impl #generics ::resty::Serialize for #ident #generics {
@@ -77,10 +76,15 @@ pub fn derive_resty_serialize(input: TokenStream) -> TokenStream {
 #[doc = include_str!("../docs/traits/Deserialize.md")]
 #[proc_macro_derive(Deserialize, attributes(deserializer))]
 pub fn derive_resty_deserialize(input: TokenStream) -> TokenStream {
-    let (deserializer, ident, generics) = parse_derive_attr!(
-        "deserializer" in input
-        else "deserializer attribute required for deriving Deserialize"
-    );
+    let (
+        deserializer,
+        DeriveInput {
+            ident, generics, ..
+        },
+    ) = match parse::parse_derive_helper::<syn::Path>("deserializer", input) {
+        Ok(v) => v,
+        Err(e) => return e.into_compile_error().into(),
+    };
 
     quote::quote! {
     impl #generics ::resty::Deserialize for #ident #generics {
@@ -95,6 +99,12 @@ pub fn derive_resty_deserialize(input: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn public(_: TokenStream, body: TokenStream) -> TokenStream {
     let item_struct = parse_macro_input!(body as syn::ItemStruct);
+    let ident = &item_struct.ident;
     register_struct(&item_struct);
-    item_struct.into_token_stream().into()
+
+    quote::quote! {
+        #item_struct
+        impl ::resty::__private::Public for #ident {}
+    }
+    .into()
 }

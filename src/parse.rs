@@ -94,6 +94,6 @@ pub(crate) fn parse_url<'a>(req: &httparse::Request<'a, 'a>) -> Url {
     req.path
         .map(|path| format!("http://{host}{}", path))
         .and_then(|url| Url::parse(&url).ok())
-        .ok_or(crate::Error::ParseError)
+        .ok_or(crate::Error::RequestError)
         .unwrap()
 }

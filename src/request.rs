@@ -30,10 +30,10 @@ impl<'a, B: Deserialize> Request<'a, B> {
         readable: &'a mut Readable,
     ) -> Result<Self, Error> {
         Ok(Self {
-            method: request.method.ok_or(Error::ParseError)?.into(),
+            method: request.method.ok_or(Error::RequestError)?.into(),
             url,
             cookies,
-            version: request.version.ok_or(Error::ParseError)?,
+            version: request.version.ok_or(Error::RequestError)?,
             headers: request.headers,
             readable,
             path_params,
@@ -66,7 +66,7 @@ impl<'a, B: Deserialize> Request<'a, B> {
 
         let _ = self.read_exact(&mut vec).await;
 
-        let body = Box::new(B::deserialize(&vec).map_err(|_| Error::ParseError));
+        let body = Box::new(B::deserialize(&vec).map_err(|e| Error::ParseError(e.to_string())));
 
         self.body.replace(body);
 
