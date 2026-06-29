@@ -17,12 +17,12 @@ The middlewares are guranteed to run in the order
 This macro supports the following arguments:
 
 - Router: The Router that this endpoint should be added to. This is inferred with path routing
-- Path: The endpoing path for that handler. This is infered with path routing
+- Route: The endpoing path for that handler. This is infered with path routing
 
 ```rust
 #[resty::middleware(
     Router(ROUTER),
-    Path("/"),
+    Route("/"),
 )]
 async fn auth<'a>(req: &mut Request<'a>, res: &mut Response<'a, &'static str>) {
     if !authenticate(req) {

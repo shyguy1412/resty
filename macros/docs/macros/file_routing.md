@@ -1,6 +1,6 @@
 # Macro to automatically route via file path
 
-Using path routing allows you to omit the `Path` and `Route` arguments for the `endpoint` macro.
+Using file routing allows you to omit the `Path` and `Route` arguments for the `endpoint` macro.
 
 Special Routes:
 
@@ -10,7 +10,7 @@ Special Routes:
 ## Usage
 
 ```rust
-#[resty::use_path_routing("./api")]
+#[resty::file_routing("./api")]
 static ROUTER: LazyLock<Router>;
 ```
 

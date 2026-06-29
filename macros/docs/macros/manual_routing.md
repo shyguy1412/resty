@@ -3,12 +3,12 @@
 ## Usage
 
 ```rust
-#[resty::use_manual_routing]
+#[resty::manual_routing]
 static ROUTER: LazyLock<Router>;
 
 #[resty::endpoint(
+    Route("/"),
     Router(ROUTER),
-    Path("/"),
     Method(GET),
     Header("Content-Type", "text/html; charset=utf-8")
 )]

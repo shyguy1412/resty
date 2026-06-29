@@ -24,7 +24,7 @@ Example settings for vscode
 ## Example
 
 ```rust
-#[resty::use_manual_routing]
+#[resty::manual_routing]
 static ROUTER: LazyLock<Router>;
 
 #[resty::endpoint(

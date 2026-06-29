@@ -5,14 +5,14 @@
 This macro supports the following arguments:
 
 - Router: The Router that this endpoint should be added to. This is inferred with path routing
-- Path: The endpoing path for that handler. This is infered with path routing
+- Route: The endpoing path for that handler. This is infered with path routing
 - Method: Comma separated list of HTTP methods this handler should handle
 - Header: Repeatable. Declares a Header that should always be sent
 
 ```rust
 #[resty::endpoint(
     Router(ROUTER),
-    Path("/"),
+    Route("/"),
     Method(GET),
     Header("Content-Type", "text/html; charset=utf-8")
 )]

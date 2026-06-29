@@ -60,7 +60,7 @@ pub fn manual_routing(_: TokenStream, body: TokenStream) -> Result<TokenStream, 
 
 static BASE_PATHS: std::sync::Mutex<Vec<PathBuf>> = std::sync::Mutex::new(Vec::new());
 
-pub fn path_routing(args: TokenStream, body: TokenStream) -> Result<TokenStream, syn::Error> {
+pub fn file_routing(args: TokenStream, body: TokenStream) -> Result<TokenStream, syn::Error> {
     let path_litstr: syn::LitStr = syn::parse(args)?;
 
     let mut body: Vec<TokenTree> = body.into_iter().collect();

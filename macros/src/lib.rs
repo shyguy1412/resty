@@ -16,17 +16,17 @@ fn compile_error<E: std::fmt::Display>(err: E) -> syn::Error {
 
 #[doc = include_str!("../docs/macros/manual_routing.md")]
 #[proc_macro_attribute]
-pub fn use_manual_routing(args: TokenStream, body: TokenStream) -> TokenStream {
+pub fn manual_routing(args: TokenStream, body: TokenStream) -> TokenStream {
     match routing::manual_routing(args, body) {
         Ok(ok) => ok,
         Err(err) => err.to_compile_error().into(),
     }
 }
 
-#[doc = include_str!("../docs/macros/path_routing.md")]
+#[doc = include_str!("../docs/macros/file_routing.md")]
 #[proc_macro_attribute]
-pub fn use_path_routing(args: TokenStream, body: TokenStream) -> TokenStream {
-    match routing::path_routing(args, body) {
+pub fn file_routing(args: TokenStream, body: TokenStream) -> TokenStream {
+    match routing::file_routing(args, body) {
         Ok(ok) => ok,
         Err(err) => err.to_compile_error().into(),
     }
