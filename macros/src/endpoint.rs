@@ -1,28 +1,7 @@
-use proc_macro::{Span, TokenStream};
+use proc_macro::TokenStream;
 use quote::{ToTokens, format_ident};
 
-use crate::{compile_error, parse, routing::get_endpoint_path, spec::register_endpoint};
-
-fn endpoint_segments(path: Option<String>) -> Result<Vec<String>, syn::Error> {
-    let path = path.or_else(get_endpoint_path);
-    let segments = path
-        .as_ref()
-        .map(|v| v.as_str())
-        // .and_then(|p| p.strip_prefix("/").or(Some(p)))
-        .or_else(|| match Span::call_site().local_file() {
-            None => Some("<rust-analyzer has not yet implemented Span::local_file>"),
-            Some(..) => None,
-        })
-        .map(|p| p.split("/"));
-
-    let Some(segments) = segments else {
-        return Err(compile_error(
-            "Can not determine endpoint route. Maybe you are missing a Path directive?",
-        ));
-    };
-
-    Ok(segments.map(|s| s.to_string()).skip(1).collect())
-}
+use crate::{parse, spec::register_endpoint};
 
 fn method_byte(methods: &Vec<&syn::Expr>) -> Result<syn::Expr, syn::Error> {
     syn::parse(
@@ -75,17 +54,16 @@ pub fn endpoint_macro_impl(
         parse::methods(&args),
         parse::router(&args),
         parse::static_headers(&args),
-        parse::path_override(&args),
+        parse::path(&args),
         parse::responds(&args),
         parse::accepts(&args)
     )?;
 
-    let segments = endpoint_segments(path)?;
     let method_byte = method_byte(&methods)?;
 
     for method in methods {
         register_endpoint(
-            segments.clone(),
+            path.clone(),
             method.to_token_stream().to_string(),
             &endpoint_fn,
         )
@@ -110,7 +88,7 @@ pub fn endpoint_macro_impl(
         use ::resty::__private::*;
         #[linkme::distributed_slice(#router)]
         #[linkme(crate = linkme)]
-        static #slice_ident: ::resty::RouteSlice =(&[#(#segments),*], ::resty::Handler(&#fn_ident, #method_byte));
+        static #slice_ident: ::resty::RouteSlice =(&[#(#path),*], ::resty::Handler(&#fn_ident, #method_byte));
     };
 
     Ok(handler.into())
@@ -132,9 +110,7 @@ pub fn middleware_macro_impl(
     use parse::MacroArgumentType::*;
     let args = parse::args(args, Router | Path)?;
 
-    let (router, path) = combined_errors!(parse::router(&args), parse::path_override(&args))?;
-
-    let segments = endpoint_segments(path)?;
+    let (router, path) = combined_errors!(parse::router(&args), parse::path(&args))?;
 
     let handler = quote::quote! {
         pub fn #fn_ident <#lifetime, '__fn_borrow> (
@@ -152,7 +128,7 @@ pub fn middleware_macro_impl(
         use ::resty::__private::*;
         #[linkme::distributed_slice(#router)]
         #[linkme(crate = linkme)]
-        static #slice_ident: ::resty::RouteSlice =(&[#(#segments),*], ::resty::Middleware(&#fn_ident));
+        static #slice_ident: ::resty::RouteSlice =(&[#(#path),*], ::resty::Middleware(&#fn_ident));
     };
 
     Ok(handler.into())

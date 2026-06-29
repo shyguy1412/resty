@@ -1,10 +1,13 @@
 use std::ops::BitOr;
 
 use proc_macro::TokenStream;
-use quote::ToTokens;
-use syn::spanned::Spanned;
+use quote::{ToTokens, format_ident};
+use syn::{LitStr, spanned::Spanned};
 
-use crate::compile_error;
+use crate::{
+    compile_error,
+    routing::{self, get_endpoint_path},
+};
 
 pub type MacroArguments = Vec<MacroArgument>;
 pub enum MacroArgument {
@@ -137,16 +140,28 @@ pub fn methods<'a>(args: &'a MacroArguments) -> Result<Vec<&'a syn::Expr>, syn::
     required_argument(args, "Method").map(|methods| methods.list())
 }
 
-pub fn path_override(args: &MacroArguments) -> Result<Option<String>, syn::Error> {
-    let Some(path) = optional_argument(args, "Path")? else {
-        return Ok(None);
+pub fn path(args: &MacroArguments) -> Result<Vec<String>, syn::Error> {
+    let path = optional_argument(args, "Path")?.map_or(Ok(None), |path| path.single().map(Some))?;
+    let path: Option<LitStr> = path.map_or(Ok(None), |p| p.reparse())?;
+    let path = path.map(|p| p.value());
+    let path = path.or_else(get_endpoint_path);
+    let segments = path
+        .as_ref()
+        .map(|v| v.as_str())
+        // .and_then(|p| p.strip_prefix("/").or(Some(p)))
+        .or_else(|| match proc_macro::Span::call_site().local_file() {
+            None => Some("<rust-analyzer has not yet implemented Span::local_file>"),
+            Some(..) => None,
+        })
+        .map(|p| p.split("/"));
+
+    let Some(segments) = segments else {
+        return Err(compile_error(
+            "Can not determine endpoint route. Maybe you are missing a Path directive?",
+        ));
     };
 
-    let path = path.single()?;
-
-    let lit: syn::LitStr = syn::parse(path.to_token_stream().into())?;
-
-    Ok(Some(lit.value()))
+    Ok(segments.map(|s| s.to_string()).skip(1).collect())
 }
 
 pub fn static_headers(args: &MacroArguments) -> Result<Vec<syn::Expr>, syn::Error> {
@@ -224,12 +239,29 @@ pub fn responds(args: &MacroArguments) -> Result<Vec<syn::ExprBlock>, syn::Error
 
 pub fn router(args: &MacroArguments) -> Result<syn::Path, syn::Error> {
     let Some(router) = optional_argument(args, "Router")? else {
-        return syn::parse_str("super::__RESTY__ROUTER");
+        return match routing::get_endpoint_path().is_some()
+        //workaround for rust-analyzer
+            || proc_macro::Span::call_site().local_file().is_none()
+        {
+            true => syn::parse_str("super::__RESTY__ROUTER"),
+            false => Err(syn::Error::new(
+                proc_macro::Span::call_site().into(),
+                "Can not infer Router. Maybe you are missing a Router directive?",
+            )),
+        };
     };
 
+    let ident = router.ident();
     let router = router.single()?;
+    let mut router: syn::Path = router.reparse()?;
 
-    syn::parse(router.into_token_stream().into())
+    router
+        .segments
+        .last_mut()
+        .ok_or(syn::Error::new(ident.span(), "Expected a Path to a Router"))
+        .map(|segment| segment.ident = format_ident!("__RESTY__ROUTER_{}", &segment.ident))?;
+
+    Ok(router)
 }
 
 pub fn meta_list(tokens: TokenStream) -> Result<Vec<syn::Expr>, syn::Error> {
@@ -288,6 +320,13 @@ impl<V, T: IntoIterator<Item = Result<V, syn::Error>>> ResultIterator<V> for T {
         Ok(values)
     }
 }
+pub trait Reparse: quote::ToTokens {
+    fn reparse<T: syn::parse::Parse>(&self) -> Result<T, syn::Error> {
+        syn::parse(self.to_token_stream().into())
+    }
+}
+
+impl<T: quote::ToTokens> Reparse for T {}
 
 fn collect_errors<V, E>(it: impl IntoIterator<Item = Result<V, E>>) -> (Vec<V>, Vec<E>) {
     it.into_iter()
