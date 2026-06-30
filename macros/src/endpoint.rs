@@ -182,9 +182,10 @@ fn validate_handler(mut handler: syn::ItemFn) -> Result<syn::ItemFn, syn::Error>
         .map(|seg| seg.arguments = syn::PathArguments::None);
 
     let statements = &handler.block.stmts;
+    let span = handler.block.span();
 
     let block: syn::Block = syn::parse(
-        quote::quote! {{
+        quote::quote_spanned! {span => {
             {
                 let __typecheck_request = |#req_ident: &mut #req_ty<#lifetime>|{};
                 let __typecheck_response = |#res_ident: &mut #res_ty<#lifetime>|{};
