@@ -1,5 +1,7 @@
 use std::{
     pin::Pin,
+    process::ExitCode,
+    sync::LazyLock,
     thread,
     time::{Duration, SystemTime},
 };
@@ -9,15 +11,17 @@ use smol::{
     io::{AsyncRead, AsyncWrite},
 };
 
-pub struct FileConnector(&'static str);
+use resty::{Request, Response, Router, endpoint, manual_routing};
 
-impl resty::Connector for FileConnector {
+pub struct FileSocket(&'static str);
+
+impl resty::Socket for FileSocket {
     type Error = std::io::Error;
     type Address = &'static str;
     type Stream = FileStream;
 
     async fn bind(addr: Self::Address) -> Result<Box<Self>, Self::Error> {
-        Ok(Box::new(FileConnector(addr)))
+        Ok(Box::new(FileSocket(addr)))
     }
 
     async fn accept(&self) -> Result<Self::Stream, Self::Error> {
@@ -94,4 +98,38 @@ impl AsyncWrite for FileStream {
     ) -> std::task::Poll<std::io::Result<()>> {
         AsyncWrite::poll_close(Pin::new(&mut self.1), cx)
     }
+}
+
+#[manual_routing]
+static ROUTER: LazyLock<Router>;
+
+#[endpoint(Method(GET), Route("/"), Router(ROUTER))]
+async fn get_hello_world<'a>(_req: &mut Request<'a>, res: &mut Response<'a>) -> resty::Result {
+    res.ok(&"Hello World!").await?;
+
+    Ok(())
+}
+
+fn main() -> ExitCode {
+    println!("{}", *ROUTER);
+
+    let _ = std::fs::remove_file("./file-socket");
+    let _ = std::fs::write("./file-socket", &[]);
+    if let Err(error) = resty::bind::<FileSocket>("./file-socket", &ROUTER) {
+        println!("{error:?}");
+        return ExitCode::FAILURE;
+    }
+
+    println!("Listening on port 3333");
+
+    let _: Vec<_> = std::thread::available_parallelism()
+        .ok()
+        .map(|n| 0..n.get())
+        .unwrap_or(0..1)
+        .map(|_| resty::spawn_thread())
+        .collect();
+
+    thread::park();
+
+    return ExitCode::SUCCESS;
 }

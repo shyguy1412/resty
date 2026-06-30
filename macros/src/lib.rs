@@ -132,6 +132,7 @@ trait Reparse: quote::ToTokens {
         syn::parse(self.to_token_stream().into())
     }
 
+    #[allow(unused)]
     fn reparse_with<P: syn::parse::Parser>(&self, parser: P) -> Result<P::Output, syn::Error> {
         parser.parse(self.to_token_stream().into())
     }
