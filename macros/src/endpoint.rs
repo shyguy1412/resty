@@ -187,10 +187,8 @@ fn validate_handler(mut handler: syn::ItemFn) -> Result<syn::ItemFn, syn::Error>
         quote::quote_spanned! {span => {
             {
                 let __typecheck_handler = async ||{let _: ::resty::Result = #handler_ident(#req_ident, #res_ident).await;};
-                let __typecheck_request = |_: &mut ::resty::Request<#lifetime>|{};
-                let __typecheck_response = |_: &mut ::resty::Response<#lifetime>|{};
-                __typecheck_request(#req_ident);
-                __typecheck_response(#res_ident);
+                let __typecheck_request: &mut ::resty::Request<#lifetime> = #req_ident;
+                let __typecheck_response: &mut ::resty::Response<#lifetime> = #res_ident;
             }
             #(#statements)*
         }}
