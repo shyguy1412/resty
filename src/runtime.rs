@@ -43,7 +43,7 @@ pub fn spawn_thread() -> std::thread::JoinHandle<std::convert::Infallible> {
 async fn accept_connections<S: Socket + 'static>(connector: Box<S>, router: &'static Router) -> () {
     loop {
         let Ok(stream) = connector.accept().await else {
-            println!("Dropped incoming connection");
+            // println!("Dropped incoming connection");
             continue;
         };
 

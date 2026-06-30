@@ -83,8 +83,7 @@ pub fn endpoint_macro_impl(
             const STATIC_HEADERS :&[(&str, &str)] = &[#(#static_headers),*];
 
             Box::pin(async move {
-                let result: ::resty::Result = #fn_ident(req, res).await;
-                result?;
+                #fn_ident(req, res).await?;
                 Ok(())
             })
         }
@@ -123,8 +122,7 @@ pub fn middleware_macro_impl(
             #endpoint_fn;
 
             Box::pin(async move {
-                let result: ::resty::Result = #fn_ident(req, res).await;
-                result?;
+                #fn_ident(req, res).await?;
                 Ok(())
             })
 
@@ -139,6 +137,7 @@ pub fn middleware_macro_impl(
 }
 
 fn validate_handler(mut handler: syn::ItemFn) -> Result<syn::ItemFn, syn::Error> {
+    let handler_ident = &handler.sig.ident;
     let args: Vec<_> = handler
         .sig
         .inputs
@@ -187,8 +186,9 @@ fn validate_handler(mut handler: syn::ItemFn) -> Result<syn::ItemFn, syn::Error>
     let block: syn::Block = syn::parse(
         quote::quote_spanned! {span => {
             {
-                let __typecheck_request = |#req_ident: &mut #req_ty<#lifetime>|{};
-                let __typecheck_response = |#res_ident: &mut #res_ty<#lifetime>|{};
+                let __typecheck_handler = async ||{let _: ::resty::Result = #handler_ident(#req_ident, #res_ident).await;};
+                let __typecheck_request = |_: &mut ::resty::Request<#lifetime>|{};
+                let __typecheck_response = |_: &mut ::resty::Response<#lifetime>|{};
                 __typecheck_request(#req_ident);
                 __typecheck_response(#res_ident);
             }

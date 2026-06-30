@@ -53,7 +53,13 @@ impl std::fmt::Display for Router {
             write!(f, "  {method}\n")?;
         }
 
-        write!(f, "  {:?}\n", self.middleware.map(|_| true))?;
+        write!(
+            f,
+            "  {}\n",
+            self.middleware
+                .map(|_| "Middleware: Yes")
+                .unwrap_or("Middleware: No")
+        )?;
 
         write!(f, "}}")
     }
@@ -75,7 +81,7 @@ impl Router {
             route_table.add_route(slice)
         }
 
-        println!("{route_table}");
+        // println!("{route_table}");
 
         return route_table;
     }
@@ -83,8 +89,8 @@ impl Router {
     pub fn add_route(&mut self, (route, handler_or_middleware): &RouteSlice) {
         let mut current_router = self;
 
-        println!("{route:?}");
-
+        // println!("{route:?}");
+        //
         for current_segment in *route {
             let Router { segments, .. } = current_router;
 
