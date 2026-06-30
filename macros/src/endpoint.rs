@@ -1,7 +1,8 @@
 use proc_macro::TokenStream;
 use quote::{ToTokens, format_ident};
+use syn::spanned::Spanned;
 
-use crate::{parse, spec::register_endpoint};
+use crate::*;
 
 fn method_byte(methods: &Vec<&syn::Expr>) -> Result<syn::Expr, syn::Error> {
     syn::parse(
@@ -31,7 +32,7 @@ macro_rules! combined_errors {
     ($($rest:expr),+) => {{
         let mut errors = Vec::new();
         let values = combined_errors!(errors => $($rest),* );
-        values.ok_or_else(||crate::parse::combine_errors(errors).expect_err("If values isnt Some there must be an error"))
+        values.ok_or_else(||crate::combine_errors(errors).expect_err("If values isnt Some there must be an error"))
     }};
 }
 
@@ -39,14 +40,15 @@ pub fn endpoint_macro_impl(
     args: TokenStream,
     body: TokenStream,
 ) -> Result<TokenStream, syn::Error> {
-    let endpoint_fn: syn::ItemFn = syn::parse(body)?;
+    let endpoint_fn = validate_handler(syn::parse(body)?)?;
+
     let fn_ident = &endpoint_fn.sig.ident;
     let slice_ident = format_ident!("__{fn_ident}_route");
     let generics = &endpoint_fn.sig.generics;
     let lifetime = generics
         .lifetimes()
         .nth(0)
-        .expect("Handler function is missing a lifetime parameter");
+        .expect("guranteed by validate_handler");
 
     let args = parse::args(args, u16::MAX)?;
 
@@ -62,7 +64,7 @@ pub fn endpoint_macro_impl(
     let method_byte = method_byte(&methods)?;
 
     for method in methods {
-        register_endpoint(
+        spec::register_endpoint(
             path.clone(),
             method.to_token_stream().to_string(),
             &endpoint_fn,
@@ -81,7 +83,8 @@ pub fn endpoint_macro_impl(
             const STATIC_HEADERS :&[(&str, &str)] = &[#(#static_headers),*];
 
             Box::pin(async move {
-                #fn_ident(req, res).await?;
+                let result: ::resty::Result = #fn_ident(req, res).await;
+                result?;
                 Ok(())
             })
         }
@@ -98,14 +101,14 @@ pub fn middleware_macro_impl(
     args: TokenStream,
     body: TokenStream,
 ) -> Result<TokenStream, syn::Error> {
-    let endpoint_fn: syn::ItemFn = syn::parse(body)?;
+    let endpoint_fn = validate_handler(syn::parse(body)?)?;
     let fn_ident = &endpoint_fn.sig.ident;
     let slice_ident = format_ident!("__{fn_ident}_route");
     let generics = &endpoint_fn.sig.generics;
-    let lifetime = generics
-        .lifetimes()
-        .nth(0)
-        .expect("Handler function is missing a lifetime parameter");
+    let lifetime = generics.lifetimes().nth(0).ok_or(syn::Error::new(
+        endpoint_fn.sig.span(),
+        "Handler function is missing a lifetime parameter",
+    ))?;
 
     use parse::MacroArgumentType::*;
     let args = parse::args(args, Router | Route)?;
@@ -120,7 +123,8 @@ pub fn middleware_macro_impl(
             #endpoint_fn;
 
             Box::pin(async move {
-                #fn_ident(req, res).await?;
+                let result: ::resty::Result = #fn_ident(req, res).await;
+                result?;
                 Ok(())
             })
 
@@ -132,4 +136,67 @@ pub fn middleware_macro_impl(
     };
 
     Ok(handler.into())
+}
+
+fn validate_handler(mut handler: syn::ItemFn) -> Result<syn::ItemFn, syn::Error> {
+    let args: Vec<_> = handler
+        .sig
+        .inputs
+        .iter()
+        .map(|arg| arg.reparse::<syn::PatType>())
+        .ok()?;
+
+    let lifetime = handler
+        .sig
+        .generics
+        .lifetimes()
+        .nth(0)
+        .ok_or(syn::Error::new_spanned(
+            handler.sig.clone(),
+            "Expected a lifetime parameter",
+        ))?;
+
+    let Some((req, res)) = args.get(0).zip(args.get(1)) else {
+        return Err(syn::Error::new_spanned(
+            handler.sig.clone(),
+            "Expected Request and Response arguments",
+        ));
+    };
+
+    let req_ident: syn::Ident = req.pat.reparse()?;
+    let req_ty: syn::TypeReference = req.ty.reparse()?;
+    let mut req_ty: syn::TypePath = req_ty.elem.reparse()?;
+    req_ty
+        .path
+        .segments
+        .last_mut()
+        .map(|seg| seg.arguments = syn::PathArguments::None);
+
+    let res_ident: syn::Ident = res.pat.reparse()?;
+    let res_ty: syn::TypeReference = res.ty.reparse()?;
+    let mut res_ty: syn::TypePath = res_ty.elem.reparse()?;
+    res_ty
+        .path
+        .segments
+        .last_mut()
+        .map(|seg| seg.arguments = syn::PathArguments::None);
+
+    let statements = &handler.block.stmts;
+
+    let block: syn::Block = syn::parse(
+        quote::quote! {{
+            {
+                let __typecheck_request = |#req_ident: &mut #req_ty<#lifetime>|{};
+                let __typecheck_response = |#res_ident: &mut #res_ty<#lifetime>|{};
+                __typecheck_request(#req_ident);
+                __typecheck_response(#res_ident);
+            }
+            #(#statements)*
+        }}
+        .into(),
+    )?;
+
+    handler.block = Box::new(block);
+
+    Ok(handler)
 }

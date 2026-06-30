@@ -4,7 +4,7 @@ use proc_macro::TokenStream;
 use quote::{ToTokens, format_ident};
 use syn::{LitStr, spanned::Spanned};
 
-use crate::routing::get_endpoint_path;
+use crate::*;
 
 pub type MacroArguments = Vec<MacroArgument>;
 pub enum MacroArgument {
@@ -157,7 +157,7 @@ pub fn route(args: &MacroArguments) -> Result<Vec<String>, syn::Error> {
         .map_or(Ok(None), |path| path.single().map(Some))?;
     let path: Option<LitStr> = path.map_or(Ok(None), |p| p.reparse())?;
     let path = path.map(|p| p.value());
-    let path = path.or_else(get_endpoint_path);
+    let path = path.or_else(routing::get_endpoint_path);
     let segments = path
         .as_ref()
         .map(|v| v.as_str())
@@ -253,7 +253,7 @@ pub fn responds(args: &MacroArguments) -> Result<Vec<syn::ExprBlock>, syn::Error
 
 pub fn router(args: &MacroArguments) -> Result<syn::Path, syn::Error> {
     let Some(router) = optional_argument(args, MacroArgumentType::Router)? else {
-        return match get_endpoint_path().is_some()
+        return match routing::get_endpoint_path().is_some()
         //workaround for rust-analyzer
             || proc_macro::Span::call_site().local_file().is_none()
         {
@@ -265,15 +265,15 @@ pub fn router(args: &MacroArguments) -> Result<syn::Path, syn::Error> {
         };
     };
 
-    let ident = router.ident();
     let router = router.single()?;
     let mut router: syn::Path = router.reparse()?;
 
     router
         .segments
-        .last_mut()
-        .ok_or(syn::Error::new(ident.span(), "Expected a Path to a Router"))
-        .map(|segment| segment.ident = format_ident!("__RESTY__ROUTER_{}", &segment.ident))?;
+        .push(format_ident!("__RESTY__ROUTER").into());
+    // .last_mut()
+    // .ok_or(syn::Error::new(ident.span(), "Expected a Path to a Router"))
+    // .map(|segment| segment.ident = format_ident!("__RESTY__ROUTER_{}", &segment.ident))?;
 
     Ok(router)
 }
@@ -309,8 +309,8 @@ fn optional_argument<'a>(
     args.iter()
         .skip(1)
         .map(|arg| arg.ident())
-        .map(|ident| -> Result<(), syn::Error> {
-            Err(syn::Error::new(
+        .map(|ident| {
+            Err::<(), _>(syn::Error::new(
                 ident.span(),
                 format!("Expected at most one `{}` parameter", ident.to_string()),
             ))
@@ -330,45 +330,6 @@ fn required_argument<'a>(
             format!("Missing required argument: {}", Into::<&str>::into(arg)),
         )
     })
-}
-
-trait ResultIterator<T> {
-    fn ok(self) -> Result<Vec<T>, syn::Error>;
-}
-
-impl<V, T: IntoIterator<Item = Result<V, syn::Error>>> ResultIterator<V> for T {
-    fn ok(self) -> Result<Vec<V>, syn::Error> {
-        let (values, errors) = collect_errors(self.into_iter());
-        combine_errors(errors)?;
-        Ok(values)
-    }
-}
-pub trait Reparse: quote::ToTokens {
-    fn reparse<T: syn::parse::Parse>(&self) -> Result<T, syn::Error> {
-        syn::parse(self.to_token_stream().into())
-    }
-}
-
-impl<T: quote::ToTokens> Reparse for T {}
-
-fn collect_errors<V, E>(it: impl IntoIterator<Item = Result<V, E>>) -> (Vec<V>, Vec<E>) {
-    it.into_iter()
-        .fold((Vec::new(), Vec::new()), |mut collector, next| {
-            match next {
-                Ok(ident) => collector.0.push(ident),
-                Err(err) => collector.1.push(err),
-            };
-            collector
-        })
-}
-
-pub fn combine_errors(errors: Vec<syn::Error>) -> Result<(), syn::Error> {
-    if let Some(mut error) = errors.get(0).cloned() {
-        error.extend(errors.into_iter().skip(1));
-        return Err(error);
-    }
-
-    return Ok(());
 }
 
 pub fn parse_derive_helper<P: syn::parse::Parse>(

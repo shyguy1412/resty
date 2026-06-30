@@ -67,11 +67,14 @@ pub mod __private {
         ($($ty:ty)*) => ($(impl Public for $ty {})*);
     }
 
-    /// Number type for openapi specification
-    pub type Number = f64;
+    /// A hint to obscure the value
+    pub type Password = String;
 
     public! {
         String
-        Number
+        f32
+        f64
+        i32
+        i64
     }
 }
