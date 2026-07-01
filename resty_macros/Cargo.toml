@@ -1,7 +1,7 @@
 [package]
 name = "resty_macros"
-version = "0.1.3"
 edition = "2024"
+version.workspace = true
 license = "MIT"
 description = "Procedural macros for resty"
 documentation = "https://docs.rs/resty_macros"
