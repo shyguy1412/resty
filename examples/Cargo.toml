@@ -1,2 +1,4 @@
 [workspace]
-members = ["petstore"]
+members = ["*"]
+exclude = ["target"]
+resolver = "3"
