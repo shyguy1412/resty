@@ -1,86 +1,86 @@
 use proc_macro::TokenStream;
+use proc_macro_argue::{ArgumentList, argue};
 use quote::{ToTokens, format_ident};
 use syn::spanned::Spanned;
 
 use crate::*;
 
-fn method_byte(methods: &Vec<&syn::Expr>) -> Result<syn::Expr, syn::Error> {
-    syn::parse(
-        quote::quote! {
-            {
-                use ::resty::HttpMethod::*;
-                #(#methods as u16 )|*
-            }
-        }
-        .into(),
-    )
+argue! {
+    MiddlewareArgument {
+        Router: syn::Path,
+        Route: syn::LitStr,
+        Header: HeaderArgument,
+    }
+    HandlerArgument {
+        Method: ArgumentList<syn::Expr>,
+        Router: syn::Path,
+        Route: syn::LitStr,
+        Header: HeaderArgument,
+        Accepts: syn::Path,
+        Responds: RespondsArgument,
+        Summary: syn::LitStr,
+        Description: syn::LitStr,
+    }
+    HeaderArgument(syn::LitStr, syn::token::Comma, syn::LitStr)
+    RespondsArgument(syn::LitInt, syn::token::Comma, syn::Path)
 }
 
-macro_rules! combined_errors {
-    ($errs: ident => $first: expr) => {
-        match $first {
-            Ok(ok) => Some(ok),
-            Err(err) => {
-                $errs.push(err);
-                None
-            }
-        }
-    };
-    ($errs:ident => $first:expr, $($rest:expr),+) => {{
-        combined_errors!($errs => $first).zip(combined_errors!($errs => $($rest),*))
-    }};
-    ($($rest:expr),+) => {{
-        let mut errors = Vec::new();
-        let values = combined_errors!(errors => $($rest),* );
-        values.ok_or_else(||crate::combine_errors(errors).expect_err("If values isnt Some there must be an error"))
-    }};
+impl ToTokens for HeaderArgument {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        tokens.extend(self.0.to_token_stream());
+        tokens.extend(self.1.to_token_stream());
+        tokens.extend(self.2.to_token_stream());
+    }
 }
 
 pub fn endpoint_macro_impl(
     args: TokenStream,
     body: TokenStream,
 ) -> Result<TokenStream, syn::Error> {
-    let endpoint_fn = validate_handler(syn::parse(body)?)?;
+    use HandlerArgument::*;
 
-    let fn_ident = &endpoint_fn.sig.ident;
+    let args: ArgumentList<HandlerArgument> = syn::parse(args)?;
+
+    let headers: Vec<_> = argue!(args may repeat Header)
+        .map(|(.., header)| header)
+        .collect();
+
+    let router = argue!(args may have Router)
+        .map(|(.., value)| value.clone())
+        .map_or_else(routing::default_router, Ok)?;
+
+    let route = argue!(args may have Route)
+        .map(|(.., value)| value.value().split("/").map(ToString::to_string).collect())
+        .map_or_else(routing::default_route, Ok)?;
+
+    let methods = argue!(args must have Method)?.1.into_iter();
+    let method_byte: syn::Expr = syn::parse2(quote::quote! {
+        {
+            use ::resty::HttpMethod::*;
+            #(#methods as u16 )|*
+        }
+    })?;
+
+    let handler_fn = validate_handler(syn::parse(body)?)?;
+    let fn_ident = &handler_fn.sig.ident;
     let slice_ident = format_ident!("__{fn_ident}_route");
-    let generics = &endpoint_fn.sig.generics;
+    let generics = &handler_fn.sig.generics;
     let lifetime = generics
         .lifetimes()
         .nth(0)
         .expect("guranteed by validate_handler");
 
-    let args = parse::args(args, u16::MAX)?;
-
-    let (methods, (router, (static_headers, (path, (responds, accepts))))) = combined_errors!(
-        parse::methods(&args),
-        parse::router(&args),
-        parse::static_headers(&args),
-        parse::route(&args),
-        parse::responds(&args),
-        parse::accepts(&args)
-    )?;
-
-    let method_byte = method_byte(&methods)?;
-
-    for method in methods {
-        spec::register_endpoint(
-            path.clone(),
-            method.to_token_stream().to_string(),
-            &endpoint_fn,
-        )
-    }
-    let handler = quote::quote! {
+    Ok(quote::quote! {
         pub fn #fn_ident <#lifetime, '__fn_borrow> (
             req: &'__fn_borrow mut ::resty::Request<#lifetime>,
             res: &'__fn_borrow mut ::resty::Response<#lifetime>
         ) -> ::resty::EndpointTask<'__fn_borrow> {
-            #endpoint_fn;
+            #handler_fn;
 
-            #(#responds)*
-            #(#accepts)*
+            // #(#responds)*
+            // #(#accepts)*
 
-            const STATIC_HEADERS :&[(&str, &str)] = &[#(#static_headers),*];
+            const STATIC_HEADERS :&[(&str, &str)] = &[#((#headers)),*];
 
             Box::pin(async move {
                 #fn_ident(req, res).await?;
@@ -88,52 +88,62 @@ pub fn endpoint_macro_impl(
             })
         }
         use ::resty::__private::*;
-        #[linkme::distributed_slice(#router)]
+        #[linkme::distributed_slice(#router::__RESTY__ROUTER)]
         #[linkme(crate = linkme)]
-        static #slice_ident: ::resty::RouteSlice =(&[#(#path),*], ::resty::Handler(&#fn_ident, #method_byte));
-    };
-
-    Ok(handler.into())
+        static #slice_ident: ::resty::RouteSlice =(&[#(#route),*], ::resty::Handler(&#fn_ident, #method_byte));
+    }
+    .into())
 }
 
 pub fn middleware_macro_impl(
     args: TokenStream,
     body: TokenStream,
 ) -> Result<TokenStream, syn::Error> {
-    let endpoint_fn = validate_handler(syn::parse(body)?)?;
-    let fn_ident = &endpoint_fn.sig.ident;
+    use MiddlewareArgument::*;
+
+    let args: ArgumentList<MiddlewareArgument> = syn::parse(args)?;
+
+    let router = argue!(args may have Router)
+        .map(|(.., value)| value.clone())
+        .map_or_else(routing::default_router, Ok)?;
+
+    let route = argue!(args may have Route)
+        .map(|(.., value)| value.value().split("/").map(ToString::to_string).collect())
+        .map_or_else(routing::default_route, Ok)?;
+
+    let headers: Vec<_> = argue!(args may repeat Header)
+        .map(|(.., header)| header)
+        .collect();
+
+    let handler_fn = validate_handler(syn::parse(body)?)?;
+    let fn_ident = &handler_fn.sig.ident;
     let slice_ident = format_ident!("__{fn_ident}_route");
-    let generics = &endpoint_fn.sig.generics;
-    let lifetime = generics.lifetimes().nth(0).ok_or(syn::Error::new(
-        endpoint_fn.sig.span(),
-        "Handler function is missing a lifetime parameter",
-    ))?;
+    let generics = &handler_fn.sig.generics;
+    let lifetime = generics
+        .lifetimes()
+        .nth(0)
+        .expect("guranteed by validate_handler");
 
-    use parse::MacroArgumentType::*;
-    let args = parse::args(args, Router | Route)?;
-
-    let (router, path) = combined_errors!(parse::router(&args), parse::route(&args))?;
-
-    let handler = quote::quote! {
+    Ok(quote::quote! {
         pub fn #fn_ident <#lifetime, '__fn_borrow> (
             req: &'__fn_borrow mut ::resty::Request<#lifetime>,
             res: &'__fn_borrow mut ::resty::Response<#lifetime>
         ) -> ::resty::EndpointTask<'__fn_borrow> {
-            #endpoint_fn;
+            #handler_fn;
+
+            const STATIC_HEADERS :&[(&str, &str)] = &[#((#headers)),*];
 
             Box::pin(async move {
                 #fn_ident(req, res).await?;
                 Ok(())
             })
-
         }
         use ::resty::__private::*;
-        #[linkme::distributed_slice(#router)]
+        #[linkme::distributed_slice(#router::__RESTY__ROUTER)]
         #[linkme(crate = linkme)]
-        static #slice_ident: ::resty::RouteSlice =(&[#(#path),*], ::resty::Middleware(&#fn_ident));
-    };
-
-    Ok(handler.into())
+        static #slice_ident: ::resty::RouteSlice =(&[#(#route),*], ::resty::Middleware(&#fn_ident));
+    }
+    .into())
 }
 
 fn validate_handler(mut handler: syn::ItemFn) -> Result<syn::ItemFn, syn::Error> {

@@ -1,3 +1,5 @@
+//! This example implements a custom Socket that reads HTTP Requests from a file
+
 use std::{
     pin::Pin,
     process::ExitCode,
@@ -11,7 +13,7 @@ use smol::{
     io::{AsyncRead, AsyncWrite},
 };
 
-use resty::{Request, Response, Router, endpoint, manual_routing};
+use resty::{Request, Response, Router, endpoint, router};
 
 pub struct FileSocket(&'static str);
 
@@ -100,7 +102,7 @@ impl AsyncWrite for FileStream {
     }
 }
 
-#[manual_routing]
+#[router]
 static ROUTER: LazyLock<Router>;
 
 #[endpoint(Method(GET), Route("/"), Router(ROUTER))]

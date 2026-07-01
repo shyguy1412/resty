@@ -1,0 +1,3 @@
+[submodule "macros/argue"]
+	path = macros/argue
+	url = ../proc_macro_argue
