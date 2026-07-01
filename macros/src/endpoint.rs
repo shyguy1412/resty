@@ -61,6 +61,26 @@ pub fn endpoint_macro_impl(
         }
     })?;
 
+    let responds = argue!(args may repeat Responds)
+        .map(|(.., RespondsArgument(code, _, ty))| {
+            syn::parse2::<syn::ExprBlock>(quote::quote! {{
+                fn __doc_validate<T: ::resty::__private::Public>(code: u16) {
+                    __doc_validate::<#ty>(#code);
+                }
+            }})
+        })
+        .ok()?;
+
+    let accepts = argue!(args may repeat Accepts)
+        .map(|(.., ty)| {
+            syn::parse2::<syn::ExprBlock>(quote::quote! {{
+                fn __doc_validate<T: ::resty::__private::Public>() {
+                    __doc_validate::<#ty>();
+                }
+            }})
+        })
+        .ok()?;
+
     let handler_fn = validate_handler(syn::parse(body)?)?;
     let fn_ident = &handler_fn.sig.ident;
     let slice_ident = format_ident!("__{fn_ident}_route");
@@ -77,8 +97,8 @@ pub fn endpoint_macro_impl(
         ) -> ::resty::EndpointTask<'__fn_borrow> {
             #handler_fn;
 
-            // #(#responds)*
-            // #(#accepts)*
+            #(#responds)*
+            #(#accepts)*
 
             const STATIC_HEADERS :&[(&str, &str)] = &[#((#headers)),*];
 
