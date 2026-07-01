@@ -45,11 +45,11 @@ pub fn endpoint_macro_impl(
         .map(|(.., header)| header)
         .collect();
 
-    let router = argue!(args may have Router)
+    let router = argue!(args may have Router)?
         .map(|(.., value)| value.clone())
         .map_or_else(routing::default_router, Ok)?;
 
-    let route = argue!(args may have Route)
+    let route = argue!(args may have Route)?
         .map(|(.., value)| value.value().split("/").map(ToString::to_string).collect())
         .map_or_else(routing::default_route, Ok)?;
 
@@ -123,11 +123,11 @@ pub fn middleware_macro_impl(
 
     let args: ArgumentList<MiddlewareArgument> = syn::parse(args)?;
 
-    let router = argue!(args may have Router)
+    let router = argue!(args may have Router)?
         .map(|(.., value)| value.clone())
         .map_or_else(routing::default_router, Ok)?;
 
-    let route = argue!(args may have Route)
+    let route = argue!(args may have Route)?
         .map(|(.., value)| value.value().split("/").map(ToString::to_string).collect())
         .map_or_else(routing::default_route, Ok)?;
 
