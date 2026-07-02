@@ -13,14 +13,18 @@ mod models;
 #[resty::router(
     FileBased("./routes"),
     Meta(
+        Title("Swagger Petstore - OpenAPI 3.0"),
         Description(
-            "This is a sample server Petstore server.\n\
-            You can find out more about Swagger at [http://swagger.io](http://swagger.io)\
-            or on [irc.freenode.net, #swagger](http://swagger.io/irc/).\n\
-            For this sample, you can use the api key `special-key` to test the authorization filters."
+            "This is a sample Pet Store Server based on the OpenAPI 3.0 specification. \
+            You can find out more about wagger at [https://swagger.io](https://swagger.io). \
+            In the third iteration of the pet store, we've switched to the design first approach! \
+            You can now help us improve the API whether it's by making changes to the definition itself or to the code. \
+            That way, with time, we can improve the API in general, and expose some of the new features in OAS3.\n\n\
+            Some useful links:\n\
+            - [The Pet Store repository](https://github.com/swagger-api/swagger-petstore)\n\
+            - [The source API definition for the Pet Store](https://github.com/swagger-api/swagger-petstore/blob/master/src/main/resources/openapi.yaml)"
         ),
-        Version("1.0.7"),
-        Title("Swagger Petstore"),
+        Version("1.0.27"),
         TermsOfService("http://swagger.io/terms/"),
         Contact(Email("apiteam@swagger.io")),
         License(

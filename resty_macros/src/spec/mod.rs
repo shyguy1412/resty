@@ -1,3 +1,9 @@
+use proc_macro::TokenStream;
+
+pub fn schema_macro_impl(args: TokenStream, body: TokenStream) -> Result<TokenStream, syn::Error> {
+    Ok(body)
+}
+
 // use std::{io::Write, sync::Mutex};
 
 // use proc_macro::TokenStream;

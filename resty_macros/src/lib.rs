@@ -39,92 +39,10 @@ pub fn middleware(args: TokenStream, body: TokenStream) -> TokenStream {
     tri!(endpoint::middleware_macro_impl(args, body.clone()) => body)
 }
 
-#[doc = include_str!("../docs/traits/Serialize.md")]
-#[proc_macro_derive(Serialize, attributes(serializer))]
-pub fn derive_resty_serialize(input: TokenStream) -> TokenStream {
-    let (
-        serializer,
-        DeriveInput {
-            ident, generics, ..
-        },
-    ) = tri!(parse_derive_helper::<syn::Path>(
-        "serializer",
-        input.clone()
-    ) => input);
-
-    quote::quote! {
-    impl #generics ::resty::Serialize for #ident #generics {
-        fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-            #serializer(self)
-        }
-    }
-    }
-    .into()
-}
-
-#[doc = include_str!("../docs/traits/Deserialize.md")]
-#[proc_macro_derive(Deserialize, attributes(deserializer))]
-pub fn derive_resty_deserialize(input: TokenStream) -> TokenStream {
-    let (
-        deserializer,
-        DeriveInput {
-            ident, generics, ..
-        },
-    ) = tri!(parse_derive_helper::<syn::Path>(
-        "deserializer",
-        input.clone()
-    ) => input);
-
-    quote::quote! {
-    impl #generics ::resty::Deserialize for #ident #generics {
-        fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
-            #deserializer(data)
-        }
-    }
-    }
-    .into()
-}
-
-fn parse_derive_helper<P: syn::parse::Parse>(
-    helper: &str,
-    input: TokenStream,
-) -> Result<(P, syn::DeriveInput), syn::Error> {
-    let ast: syn::DeriveInput = syn::parse(input)?;
-    let tokens = ast
-        .attrs
-        .iter()
-        .find(|attr| attr.path().to_token_stream().to_string() == helper)
-        .map_or(Ok(None), |attr| attr.meta.require_list().map(Some))
-        .map(|r| r.map(|list| list.tokens.to_token_stream().into()));
-
-    let tokens = match tokens {
-        Ok(v) => v,
-        Err(err) => return Err(syn::Error::new(ast.ident.span(), err)),
-    };
-
-    let Some(tokens) = tokens else {
-        return Err(syn::Error::new(
-            ast.ident.span(),
-            format!("{} attribute required", helper),
-        ));
-    };
-
-    Ok((syn::parse(tokens)?, ast))
-}
-
 /// Mark a struct to be documented as openapi schema
 #[proc_macro_attribute]
-pub fn public(_: TokenStream, body: TokenStream) -> TokenStream {
-    let item_struct = parse_macro_input!(body as syn::ItemStruct);
-    let ident = &item_struct.ident;
-
-    // register_struct(&item_struct);
-
-    quote::quote! {
-        #item_struct
-        impl ::resty::__private::Public for #ident {}
-    }
-    .into()
+pub fn schema(args: TokenStream, body: TokenStream) -> TokenStream {
+    tri!(spec::schema_macro_impl(args, body.clone()) => body)
 }
 
 trait ResultIterator<T> {
