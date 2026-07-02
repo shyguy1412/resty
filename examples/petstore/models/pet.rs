@@ -1,13 +1,12 @@
-use resty::schema;
+use resty::Schema;
 use serde::{Deserialize, Serialize};
 
-#[schema]
-#[derive(Deserialize, Serialize)]
-pub struct User {
-    #[example(10)]
+#[derive(Deserialize, Serialize, Schema)]
+pub struct Pet {
+    #[schema(Example(10))]
     id: i64,
 
-    #[example("doggie")]
+    #[schema(Example("doggie"))]
     name: String,
 
     category: super::Category,
@@ -18,9 +17,10 @@ pub struct User {
     status: Status,
 }
 
+#[derive(Deserialize, Serialize, Schema)]
 #[schema(Name(PetStatus))]
-#[derive(Deserialize, Serialize)]
 enum Status {
+    #[schema(Example)]
     Available,
     Pending,
     Sold,

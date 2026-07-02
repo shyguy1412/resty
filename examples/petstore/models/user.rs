@@ -1,31 +1,30 @@
-use resty::schema;
+use resty::Schema;
 use serde::{Deserialize, Serialize};
 
-#[schema]
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Schema)]
 pub struct User {
-    #[example(10)]
+    #[schema(Example(10))]
     id: i64,
 
-    #[example("theUser")]
+    #[schema(Example("theUser"))]
     username: String,
 
-    #[example("John")]
+    #[schema(Example("John"))]
     first_name: String,
 
-    #[example("James")]
+    #[schema(Example("James"))]
     last_name: String,
 
-    #[example("john@email.com")]
+    #[schema(Example("john@email.com"))]
     email: String,
 
-    #[example("12345")]
+    #[schema(Example("12345"))]
     password: String,
 
-    #[example("12345")]
+    #[schema(Example("12345"))]
     phone: String,
 
-    #[example(1)]
-    #[description("User Status")]
+    #[schema(Example(1))]
+    #[schema(Description("User Status"))]
     user_status: i32,
 }

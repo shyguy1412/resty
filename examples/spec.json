@@ -1,0 +1,16 @@
+{
+  "openapi": "3.0.4",
+  "components": {
+    "schemas": {
+      "OrderStatus": {
+        "type": "string",
+        "enum": [
+          "placed",
+          "approved",
+          "delivered"
+        ],
+        "example": "approved"
+      }
+    }
+  }
+}

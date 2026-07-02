@@ -3,9 +3,11 @@ mod routing;
 
 mod spec;
 
+use std::process::Output;
+
 use proc_macro::TokenStream;
 use quote::ToTokens;
-use syn::{DeriveInput, parse_macro_input};
+use syn::{DeriveInput, parse_macro_input, token::Token};
 
 // use crate::spec::register_struct;
 
@@ -39,11 +41,16 @@ pub fn middleware(args: TokenStream, body: TokenStream) -> TokenStream {
     tri!(endpoint::middleware_macro_impl(args, body.clone()) => body)
 }
 
-/// Mark a struct to be documented as openapi schema
-#[proc_macro_attribute]
-pub fn schema(args: TokenStream, body: TokenStream) -> TokenStream {
-    tri!(spec::schema_macro_impl(args, body.clone()) => body)
+#[proc_macro_derive(Schema, attributes(schema))]
+pub fn derive_schema(input: TokenStream) -> TokenStream {
+    tri!(spec::schema_macro_impl(input) => TokenStream::new())
 }
+
+// /// Mark a struct to be documented as openapi schema
+// #[proc_macro_attribute]
+// pub fn schema(args: TokenStream, body: TokenStream) -> TokenStream {
+//     tri!(spec::schema_macro_impl(args, body.clone()) => body)
+// }
 
 trait ResultIterator<T> {
     fn ok(self) -> Result<Vec<T>, syn::Error>;

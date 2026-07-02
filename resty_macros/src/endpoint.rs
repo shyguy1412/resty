@@ -10,7 +10,7 @@ argue! {
         Router: syn::Path,
         Route: syn::LitStr,
         Header: HeaderArgument,
-    }
+    };
     HandlerArgument {
         Method: ArgumentList<syn::Expr>,
         Router: syn::Path,
@@ -20,9 +20,9 @@ argue! {
         Responds: RespondsArgument,
         Summary: syn::LitStr,
         Description: syn::LitStr,
-    }
-    HeaderArgument(syn::LitStr, syn::token::Comma, syn::LitStr)
-    RespondsArgument(syn::LitInt, syn::token::Comma, syn::Path)
+    };
+    HeaderArgument(syn::LitStr, syn::token::Comma, syn::LitStr);
+    RespondsArgument(syn::LitInt, syn::token::Comma, syn::Path);
 }
 
 impl ToTokens for HeaderArgument {

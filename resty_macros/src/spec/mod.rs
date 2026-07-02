@@ -1,214 +1,142 @@
-use proc_macro::TokenStream;
+mod parse;
+pub use parse::*;
 
-pub fn schema_macro_impl(args: TokenStream, body: TokenStream) -> Result<TokenStream, syn::Error> {
-    Ok(body)
+use std::{
+    collections::HashMap,
+    convert::identity,
+    ops::{Deref, DerefMut},
+    sync::{LazyLock, Mutex, MutexGuard},
+};
+
+use serde::Serialize;
+
+#[derive(Serialize, Default)]
+struct Specification {
+    openapi: OpenAPIVersion,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    info: Option<()>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    external_docs: Option<()>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    servers: Option<()>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<()>,
+
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    paths: HashMap<String, Path>,
+    components: Components, // schemas: Vec<Schema>,
+                            // paths: Vec<Path>,
+                            // meta: String,
 }
 
-// use std::{io::Write, sync::Mutex};
+#[derive(Serialize, Default)]
+enum OpenAPIVersion {
+    #[default]
+    #[serde(rename = "3.0.4")]
+    V304,
+}
 
-// use proc_macro::TokenStream;
-// use quote::{ToTokens, TokenStreamExt};
-// use syn::token::Token;
+#[derive(Serialize, Default)]
+struct Components {
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    schemas: HashMap<String, Schema>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    request_bodies: HashMap<String, ()>,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    security_schemes: HashMap<String, ()>,
+}
 
-// fn router_meta(args: TokenStream, item: &syn::Item) -> Result<(), syn::Error> {
-//     let mut tokens: Vec<_> = Into::<TokenStream>::into(item.into_token_stream())
-//         .into_iter()
-//         .collect();
-//     tokens.pop();
-//     let mut stream: TokenStream = TokenStream::new();
-//     stream.extend(tokens);
-//     stream.extend(Into::<TokenStream>::into(quote::quote! {= ();}));
+#[derive(Serialize)]
+struct Path;
 
-//     let decl: syn::ItemStatic = syn::parse(stream).map_err(|_| {
-//         syn::Error::new(
-//             proc_macro::Span::call_site().into(),
-//             "meta macro is not valid in this context",
-//         )
-//     })?;
+#[derive(Serialize)]
+struct SpecEnum {
+    #[serde(rename = "type")]
+    ty: String,
 
-//     Ok(())
-// }
+    #[serde(rename = "enum")]
+    variants: Vec<String>,
 
-// fn model_meta(args: TokenStream, ident: &syn::Ident) -> Result<(), syn::Error> {
-//     Ok(())
-// }
+    #[serde(skip_serializing_if = "Option::is_none")]
+    example: Option<String>,
+}
 
-// fn endpoint_meta(args: TokenStream, ident: &syn::Ident) -> Result<(), syn::Error> {
-//     Ok(())
-// }
+#[derive(Serialize)]
+struct Schema {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
 
-// static STRUCTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
-// static ENDPOINTS: Mutex<Vec<Endpoint>> = Mutex::new(Vec::new());
+    #[serde(flatten)]
+    schema: EnumOrStruct,
+}
 
-// #[derive(Debug)]
-// struct Endpoint {
-//     path: Vec<String>,
-//     method: String,
-//     request: String,
-//     response: String,
-//     error: String,
-// }
+#[derive(Serialize)]
+#[serde(untagged)]
+enum EnumOrStruct {
+    Enum(SpecEnum),
+    Struct(SpecStruct),
+}
 
-// impl std::fmt::Display for Endpoint {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "{{\n  ")?;
-//         write!(
-//             f,
-//             "\"path\": [{}],\n  ",
-//             self.path
-//                 .iter()
-//                 .map(|p| format!("\"/{p}\""))
-//                 .map(|p| p.replace("/%", "%"))
-//                 .collect::<Vec<_>>()
-//                 .join(", ")
-//         )?;
-//         write!(f, "\"method\": \"{}\",\n  ", self.method)?;
-//         write!(f, "\"request\": \"{}\",\n  ", self.request)?;
-//         write!(f, "\"response\": \"{}\",\n  ", self.response)?;
-//         write!(f, "\"error\": \"{}\"\n", self.error)?;
-//         write!(f, "}}")
-//     }
-// }
+#[derive(Serialize)]
+struct SpecStruct {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    example: Option<String>,
+}
 
-// pub fn register_struct(item_struct: &syn::ItemStruct) {
-//     let ident = item_struct.ident.to_string();
-//     let mut fields = item_struct
-//         .fields
-//         .iter()
-//         .enumerate()
-//         .map(|(i, f)| {
-//             (
-//                 f.ident
-//                     .as_ref()
-//                     .map(|i| i.to_string())
-//                     .unwrap_or(i.to_string()),
-//                 f.ty.to_token_stream().to_string(),
-//             )
-//         })
-//         .fold("[".to_string(), |prev, (ident, ty)| {
-//             format!("{prev}[\"{ident}\", \"{ty}\"],")
-//         });
+static SPEC: LazyLock<Mutex<Specification>> = LazyLock::new(Default::default);
 
-//     fields.pop();
-//     fields.push(']');
-//     let struct_string = format!("{{\"{ident}\": {fields}}}");
+struct SpecGuard<T: DerefMut<Target = Specification>>(T);
 
-//     let _ = STRUCTS.lock().map(|mut l| l.push(struct_string));
-//     write_decl();
-// }
+trait Spec<'a, T: DerefMut<Target = Specification>> {
+    fn get(&'a self) -> SpecGuard<T>;
+}
 
-// fn get_generic_from_fn_input(item_fn: &syn::ItemFn, arg: usize, generic: usize) -> String {
-//     item_fn
-//         .sig
-//         .inputs
-//         .iter()
-//         .nth(arg)
-//         .and_then(|ty| match ty {
-//             syn::FnArg::Typed(ty) => Some(ty),
-//             _ => None,
-//         })
-//         .and_then(|ty| match ty.ty.as_ref() {
-//             syn::Type::Reference(ty) => Some(ty.elem.as_ref()),
-//             _ => None,
-//         })
-//         .and_then(|ty| match ty {
-//             syn::Type::Path(ty) => Some(ty),
-//             _ => None,
-//         })
-//         .and_then(|ty| match &ty.path.segments.iter().last()?.arguments {
-//             syn::PathArguments::AngleBracketed(generics) => Some(generics),
-//             _ => None,
-//         })
-//         .and_then(|generics| generics.args.iter().nth(generic))
-//         .and_then(|generic| match generic {
-//             syn::GenericArgument::Type(ty) => Some(ty),
-//             _ => None,
-//         })
-//         .and_then(|ty| match ty {
-//             syn::Type::Path(type_path) => Some(type_path.path.get_ident()?),
-//             _ => None,
-//         })
-//         .map(|ty| ty.to_token_stream().to_string())
-//         .unwrap_or("void".to_string())
-// }
+impl<'a> Spec<'a, MutexGuard<'a, Specification>> for LazyLock<Mutex<Specification>> {
+    fn get(&'a self) -> SpecGuard<MutexGuard<'a, Specification>> {
+        let guard = self.lock().map_or_else(|e| e.into_inner(), identity);
+        SpecGuard(guard)
+    }
+}
 
-// #[allow(unreachable_code)]
-// pub fn register_endpoint<'a>(path: Vec<String>, method: String, item_fn: &syn::ItemFn) {
-//     let request = get_generic_from_fn_input(item_fn, 0, 1);
+impl<T: DerefMut<Target = Specification>> Deref for SpecGuard<T> {
+    type Target = Specification;
 
-//     let response = get_generic_from_fn_input(item_fn, 1, 1);
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
-//     let error = get_generic_from_fn_input(item_fn, 1, 2);
+impl<T: DerefMut<Target = Specification>> DerefMut for SpecGuard<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
-//     let endpoint = Endpoint {
-//         path,
-//         method,
-//         request: request,
-//         response: response,
-//         error: error,
-//     };
+impl<T: DerefMut<Target = Specification>> Drop for SpecGuard<T> {
+    fn drop(&mut self) {
+        write_decl(&self.0);
+    }
+}
 
-//     let _ = ENDPOINTS.lock().map(|mut l| l.push(endpoint));
+fn write_decl(spec: &Specification) {
+    if is_io_allowed() {
+        let file = decl_file();
+        let _ = serde_json::to_writer_pretty(file, spec);
+    }
+}
+fn is_io_allowed() -> bool {
+    // return true;
+    match std::env::var("RESTY_DECL_GEN") {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
 
-//     write_decl();
-// }
-
-// fn write_decl() {
-//     if is_io_allowed() {
-//         let mut file = decl_file();
-//         let dts = decl_content();
-//         file.write_all(dts.as_bytes()).unwrap();
-//     }
-// }
-// fn is_io_allowed() -> bool {
-//     // return true;
-//     match std::env::var("RESTY_DECL_GEN") {
-//         Ok(_) => true,
-//         Err(_) => false,
-//     }
-// }
-
-// fn decl_file() -> std::fs::File {
-//     std::fs::OpenOptions::new()
-//         .write(true)
-//         .create(true)
-//         .truncate(true)
-//         .open(std::env::var("RESTY_DECL_GEN").expect("Must have a path"))
-//         .expect("Can not open declaration file")
-// }
-
-// fn decl_content() -> String {
-//     let structs = STRUCTS
-//         .lock()
-//         .map(|structs| format!("[\n  {}\n]", structs.join(",\n  ")))
-//         .expect("Can not be poisoned");
-
-//     let endpoints = ENDPOINTS
-//         .lock()
-//         .map(|endpoints| {
-//             format!(
-//                 "[\n{}\n]",
-//                 endpoints
-//                     .iter()
-//                     .map(|e| e.to_string())
-//                     .map(|e| indent(e))
-//                     .collect::<Vec<_>>()
-//                     .join(",\n")
-//             )
-//         })
-//         .expect("Can not be poisoned");
-
-//     let structs = indent(structs);
-//     let endpoints = indent(endpoints);
-
-//     let output = format!("{{\n  \"structs\": {structs},\n  \"endpoints\": {endpoints}\n}}");
-
-//     output
-// }
-
-// fn indent(str: String) -> String {
-//     str.lines()
-//         .map(|l| format!("  {l}"))
-//         .collect::<Vec<String>>()
-//         .join("\n")
-// }
+fn decl_file() -> std::fs::File {
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(std::env::var("RESTY_DECL_GEN").expect("Must have a path"))
+        .expect("Can not open declaration file")
+}

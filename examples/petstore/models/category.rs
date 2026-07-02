@@ -1,11 +1,10 @@
-use resty::schema;
+use resty::Schema;
 use serde::{Deserialize, Serialize};
 
-#[schema]
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Schema)]
 pub struct Category {
-    #[example(1)]
+    #[schema(Example(1))]
     id: i64,
-    #[example("Dogs")]
+    #[schema(Example("Dogs"))]
     name: String,
 }

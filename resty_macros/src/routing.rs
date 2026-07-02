@@ -9,7 +9,7 @@ argue! {
     RouterArgument {
         FileBased: syn::LitStr,
         Meta: ArgumentList<MetaArgument>
-    }
+    };
     MetaArgument {
         Description: syn::LitStr,
         Title: syn::LitStr,
@@ -21,23 +21,23 @@ argue! {
         BasePath: syn::LitStr,
         Tag: ArgumentList<TagArgument>,
         Scheme: syn::LitStr,
-    }
+    };
     ContactArgument {
         Email: syn::LitStr,
-    }
+    };
     LicenseArgument {
         Name: syn::LitStr,
         Url: syn::LitStr,
-    }
+    };
     TagArgument {
         Name: syn::LitStr,
         Description: syn::LitStr,
         ExternalDocs: ArgumentList<TagExternalDocsArgument>,
-    }
+    };
     TagExternalDocsArgument {
         Description: syn::LitStr,
         Url: syn::LitStr
-    }
+    };
 }
 pub fn router(args: TokenStream, body: TokenStream) -> Result<TokenStream, syn::Error> {
     use RouterArgument::*;

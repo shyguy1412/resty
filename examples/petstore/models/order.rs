@@ -1,33 +1,33 @@
-use resty::schema;
+use resty::Schema;
 use serde::{Deserialize, Serialize};
 
-#[schema]
-#[derive(Deserialize, Serialize)]
-pub struct Order {
-    #[example(10)]
-    id: i64,
+// #[derive(Deserialize, Serialize, Schema)]
+// #[schema(Description("Some Order"))]
+// pub struct Order {
+//     #[schema(Example(10))]
+//     id: i64,
 
-    #[example("doggie")]
-    pet_id: String,
+//     #[schema(Example("doggie"))]
+//     pet_id: String,
 
-    #[example(7)]
-    quantity: i32,
+//     #[schema(Example(7))]
+//     quantity: i32,
 
-    #[format("date-time")]
-    ship_date: String,
+//     #[schema(Format("date-time"))]
+//     ship_date: String,
 
-    #[schema(OrderStatus)]
-    #[description(Order Status)]
-    #[example("approved")]
-    status: Status,
+//     #[schema(Ref(OrderStatus), Description("Order Status"), Example("approved"))]
+//     status: Status,
 
-    complete: bool,
-}
+//     complete: bool,
+// }
 
-#[schema(Name(OrderStatus))]
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Schema)]
+#[schema(Name(OrderStatus), Type("string"))]
 enum Status {
-    Placed,
+    #[schema(Repr(placed))]
+    OrderPlaced,
+    #[schema(Example)]
     Approved,
     Delivered,
 }

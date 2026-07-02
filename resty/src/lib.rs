@@ -59,22 +59,25 @@ pub type Result = std::result::Result<(), Error>;
 pub mod __private {
     pub use linkme;
 
-    /// This trait is used as a marker for publicly exported structs
-    /// this way the documentation can validate that all documented structs are known
-    pub trait Public {}
+    /// This trait is a marker for Schemas. Do not implement manually, use the Schema derive macro
+    pub trait Schema {}
 
-    macro_rules! public {
-        ($($ty:ty)*) => ($(impl Public for $ty {})*);
-    }
+    // /// This trait is used as a marker for publicly exported structs
+    // /// this way the documentation can validate that all documented structs are known
+    // pub trait Public {}
 
-    /// A hint to obscure the value
-    pub type Password = String;
+    // macro_rules! public {
+    //     ($($ty:ty)*) => ($(impl Public for $ty {})*);
+    // }
 
-    public! {
-        String
-        f32
-        f64
-        i32
-        i64
-    }
+    // /// A hint to obscure the value
+    // pub type Password = String;
+
+    // public! {
+    //     String
+    //     f32
+    //     f64
+    //     i32
+    //     i64
+    // }
 }

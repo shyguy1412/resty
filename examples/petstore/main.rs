@@ -10,6 +10,8 @@ use resty::{Router, TcpScocket};
 
 mod models;
 
+//IDEA: make router a struct with a router trait and derive macro
+
 #[resty::router(
     FileBased("./routes"),
     Meta(
@@ -49,6 +51,7 @@ mod models;
     )
 )]
 static ROUTER: LazyLock<Router>;
+
 fn main() -> ExitCode {
     println!("{}", *ROUTER);
 
