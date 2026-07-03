@@ -78,9 +78,54 @@ enum EnumOrStruct {
 }
 
 #[derive(Serialize)]
+#[serde(tag = "type", rename = "object")]
 struct SpecStruct {
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    properties: HashMap<String, Property>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    required: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct Property {
+    #[serde(flatten)]
+    ty: PropertyType,
+    #[serde(skip_serializing_if = "PropertyMeta::is_none", flatten)]
+    meta: PropertyMeta,
+}
+
+#[derive(Serialize, Debug)]
+// #[serde(untagged)]
+enum PropertyType {
+    #[serde(rename = "type")]
+    Type(String),
+    #[serde(rename = "$ref", serialize_with = "prefix_ref")]
+    Ref(String),
+}
+
+pub fn prefix_ref<S: serde::Serializer>(str: &String, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&format!("#/components/schemas/{str}"))
+}
+
+#[derive(Serialize)]
+struct PropertyMeta {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     example: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    items: Option<PropertyType>,
+}
+
+impl PropertyMeta {
+    fn is_none(&self) -> bool {
+        self.format.is_none()
+            && self.example.is_none()
+            && self.description.is_none()
+            && self.items.is_none()
+    }
 }
 
 static SPEC: LazyLock<Mutex<Specification>> = LazyLock::new(Default::default);
@@ -121,7 +166,7 @@ impl<T: DerefMut<Target = Specification>> Drop for SpecGuard<T> {
 fn write_decl(spec: &Specification) {
     if is_io_allowed() {
         let file = decl_file();
-        let _ = serde_json::to_writer_pretty(file, spec);
+        let _ = serde_json::to_writer_pretty(file, spec).expect("foo");
     }
 }
 fn is_io_allowed() -> bool {

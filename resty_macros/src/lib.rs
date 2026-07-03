@@ -3,13 +3,7 @@ mod routing;
 
 mod spec;
 
-use std::process::Output;
-
 use proc_macro::TokenStream;
-use quote::ToTokens;
-use syn::{DeriveInput, parse_macro_input, token::Token};
-
-// use crate::spec::register_struct;
 
 macro_rules! tri {
     ($expr:expr => $body:expr) => {

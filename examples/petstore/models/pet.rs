@@ -3,18 +3,19 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Schema)]
 pub struct Pet {
-    #[schema(Example(10))]
-    id: i64,
+    #[schema(Example(10), Required)]
+    id: Option<i64>,
 
     #[schema(Example("doggie"))]
     name: String,
 
-    category: super::Category,
-    photo_urls: Vec<String>,
-    tags: super::Tag,
+    category: Option<super::Category>,
 
-    #[schema(PetStatus)]
-    status: Status,
+    photo_urls: Option<Vec<String>>,
+    tags: Option<super::Tag>,
+
+    #[schema(Ref(PetStatus))]
+    status: Option<Status>,
 }
 
 #[derive(Deserialize, Serialize, Schema)]

@@ -24,7 +24,6 @@ pub struct User {
     #[schema(Example("12345"))]
     phone: String,
 
-    #[schema(Example(1))]
-    #[schema(Description("User Status"))]
+    #[schema(Example(1), Description("User Status"))]
     user_status: i32,
 }
