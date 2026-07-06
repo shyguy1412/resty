@@ -3,46 +3,24 @@ use std::path::PathBuf;
 use proc_macro::{TokenStream, TokenTree};
 use quote::format_ident;
 
+use crate::spec;
 use proc_macro_argue::{ArgumentList, argue};
 
 argue! {
     RouterArgument {
         FileBased: syn::LitStr,
-        Meta: ArgumentList<MetaArgument>
-    };
-    MetaArgument {
-        Description: syn::LitStr,
-        Title: syn::LitStr,
-        Version: syn::LitStr,
-        TermsOfService: syn::LitStr,
-        Contact: ArgumentList<ContactArgument>,
-        License: ArgumentList<LicenseArgument>,
-        Host: syn::LitStr,
-        BasePath: syn::LitStr,
-        Tag: ArgumentList<TagArgument>,
-        Scheme: syn::LitStr,
-    };
-    ContactArgument {
-        Email: syn::LitStr,
-    };
-    LicenseArgument {
-        Name: syn::LitStr,
-        Url: syn::LitStr,
-    };
-    TagArgument {
-        Name: syn::LitStr,
-        Description: syn::LitStr,
-        ExternalDocs: ArgumentList<TagExternalDocsArgument>,
-    };
-    TagExternalDocsArgument {
-        Description: syn::LitStr,
-        Url: syn::LitStr
-    };
+        Meta: ArgumentList<syn::MetaList>
+    }
 }
+
 pub fn router(args: TokenStream, body: TokenStream) -> Result<TokenStream, syn::Error> {
     use RouterArgument::*;
 
     let args: ArgumentList<RouterArgument> = syn::parse(args)?;
+
+    if let Some(meta) = argue!(args may have Meta)? {
+        spec::apply_meta(meta)?;
+    };
 
     let basepath = argue!(args may have FileBased)?.map(|(.., val)| val);
     let (paths, idents) = basepath.map_or_else(|| Ok((Vec::new(), Vec::new())), paths)?;

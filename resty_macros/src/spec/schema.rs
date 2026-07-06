@@ -24,36 +24,6 @@ argue!(
     };
 );
 
-#[allow(unused)]
-enum VariantArgumentOld {
-    Repr(::syn::Ident, syn::Expr),
-    Example(::syn::Ident, ::syn::Path),
-}
-
-impl ::syn::parse::Parse for VariantArgumentOld {
-    fn parse(input: ::syn::parse::ParseStream) -> ::syn::Result<Self> {
-        let meta: ::syn::Meta = input.parse()?;
-        let path = match &meta {
-            ::syn::Meta::Path(path) => path,
-            ::syn::Meta::List(meta_list) => &meta_list.path,
-            ::syn::Meta::NameValue(meta_name_value) => &meta_name_value.path,
-        };
-        use VariantArgumentOld::*;
-        let ident: ::syn::Ident = path.require_ident()?.clone();
-
-        match ident.to_string().as_str() {
-            stringify!(Repr) => ::proc_macro_argue::Expect::<::syn::MetaList>::expect(meta)
-                .map(|list| list.tokens)
-                .and_then(::syn::parse2)
-                .map(|r| Repr(ident, r)),
-            stringify!(Example) => {
-                ::proc_macro_argue::Expect::<::syn::Path>::expect(meta).map(|r| Example(ident, r))
-            }
-            _ => Err(syn::Error::new_spanned(ident, "Invalid Argument")),
-        }
-    }
-}
-
 fn get_attr_once(attrs: &mut Vec<syn::Attribute>) -> Result<Option<syn::Attribute>, syn::Error> {
     combine_errors(
         attrs

@@ -1,5 +1,8 @@
-mod parse;
-pub use parse::*;
+mod schema;
+pub use schema::*;
+
+mod meta;
+pub use meta::*;
 
 use std::{
     collections::HashMap,
@@ -11,22 +14,26 @@ use std::{
 use serde::Serialize;
 
 #[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
 struct Specification {
     openapi: OpenAPIVersion,
+    #[serde(skip_serializing_if = "Info::is_empty")]
+    info: Info,
     #[serde(skip_serializing_if = "Option::is_none")]
-    info: Option<()>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    external_docs: Option<()>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    servers: Option<()>,
+    external_docs: Option<ExternalDocs>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    tags: Vec<()>,
+    servers: Vec<Server>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    tags: Vec<Tag>,
 
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     paths: HashMap<String, Path>,
-    components: Components, // schemas: Vec<Schema>,
-                            // paths: Vec<Path>,
-                            // meta: String,
+    components: Components,
+}
+
+#[derive(Serialize, Default)]
+struct Server {
+    url: String,
 }
 
 #[derive(Serialize, Default)]
@@ -37,13 +44,103 @@ enum OpenAPIVersion {
 }
 
 #[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct Info {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    terms_of_service: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    contact: Option<Contact>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    license: Option<License>,
+}
+
+impl Info {
+    fn is_empty(&self) -> bool {
+        self.title.is_none()
+            && self.description.is_none()
+            && self.version.is_none()
+            && self.terms_of_service.is_none()
+            && self.contact.is_none()
+            && self.license.is_none()
+    }
+}
+
+#[derive(Serialize, Default)]
+struct Contact {
+    email: String,
+}
+
+#[derive(Serialize, Default)]
+struct License {
+    name: String,
+    url: String,
+}
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct Tag {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    external_docs: Option<ExternalDocs>,
+}
+
+#[derive(Serialize, Default)]
+struct ExternalDocs {
+    url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+}
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
 struct Components {
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     schemas: HashMap<String, Schema>,
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     request_bodies: HashMap<String, ()>,
     #[serde(skip_serializing_if = "HashMap::is_empty")]
-    security_schemes: HashMap<String, ()>,
+    security_schemes: HashMap<String, SecurityScheme>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type")]
+enum SecurityScheme {
+    #[serde(rename = "apiKey")]
+    ApiKey(ApiKeyScheme),
+    #[serde(rename = "oauth2")]
+    OAuth2(OAuth2Scheme),
+}
+
+#[derive(Serialize, Default)]
+struct ApiKeyScheme {
+    name: String,
+    #[serde(rename = "in")]
+    is_in: String,
+}
+#[derive(Serialize)]
+struct OAuth2Scheme {
+    flows: OAuth2SchemeFlows,
+}
+#[derive(Serialize)]
+struct OAuth2SchemeFlows {
+    implicit: Option<ImplicitOAuth2Flow>,
+}
+
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+
+struct ImplicitOAuth2Flow {
+    authorization_url: String,
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    scopes: HashMap<String, String>,
 }
 
 #[derive(Serialize)]

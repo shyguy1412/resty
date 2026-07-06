@@ -18,7 +18,7 @@ mod models;
         Title("Swagger Petstore - OpenAPI 3.0"),
         Description(
             "This is a sample Pet Store Server based on the OpenAPI 3.0 specification. \
-            You can find out more about wagger at [https://swagger.io](https://swagger.io). \
+            You can find out more about swagger at [https://swagger.io](https://swagger.io). \
             In the third iteration of the pet store, we've switched to the design first approach! \
             You can now help us improve the API whether it's by making changes to the definition itself or to the code. \
             That way, with time, we can improve the API in general, and expose some of the new features in OAS3.\n\n\
@@ -33,8 +33,7 @@ mod models;
             Name("Apache 2.0"),
             Url("http://www.apache.org/licenses/LICENSE-2.0.html")
         ),
-        Host("localhost"),
-        BasePath("/v2"),
+        Server(Url("localhost")),
         Tag(
             Name("pet"),
             Description("Everything about your Pets"),
@@ -46,8 +45,17 @@ mod models;
             Description("Operations about user"),
             ExternalDocs(Description("Find out more about our store"), Url("http://swagger.io"))
         ),
-        Scheme("http"),
-        Scheme("https")
+        SecuritySchemes(
+            ApiKey(Name("api_key"), In("header")),
+            OAuth2(
+                Name("petstore_auth"),
+                Flows(Implicit(
+                    AuthorizationUrl("https://petstore3.swagger.io/oauth/authorize"),
+                    Scope("write:pets", "modify pets in your account"),
+                    Scope("read:pets", "read your pets")
+                ))
+            )
+        ),
     )
 )]
 static ROUTER: LazyLock<Router>;
