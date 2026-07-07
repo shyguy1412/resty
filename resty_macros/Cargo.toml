@@ -19,4 +19,4 @@ syn = { version = "2.0.114", features = ["full"] }
 
 [dependencies.proc_macro_argue]
 path = "./argue"
-version = "0.0.0"
+version = "0.1.1"

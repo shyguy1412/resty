@@ -40,12 +40,6 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
     tri!(spec::schema_macro_impl(input) => TokenStream::new())
 }
 
-// /// Mark a struct to be documented as openapi schema
-// #[proc_macro_attribute]
-// pub fn schema(args: TokenStream, body: TokenStream) -> TokenStream {
-//     tri!(spec::schema_macro_impl(args, body.clone()) => body)
-// }
-
 trait ResultIterator<T> {
     fn ok(self) -> Result<Vec<T>, syn::Error>;
 }

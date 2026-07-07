@@ -1,0 +1,248 @@
+{
+  "openapi": "3.0.4",
+  "info": {
+    "title": "Swagger Petstore - OpenAPI 3.0",
+    "description": "This is a sample Pet Store Server based on the OpenAPI 3.0 specification. You can find out more about swagger at [https://swagger.io](https://swagger.io). In the third iteration of the pet store, we've switched to the design first approach! You can now help us improve the API whether it's by making changes to the definition itself or to the code. That way, with time, we can improve the API in general, and expose some of the new features in OAS3.\n\nSome useful links:\n- [The Pet Store repository](https://github.com/swagger-api/swagger-petstore)\n- [The source API definition for the Pet Store](https://github.com/swagger-api/swagger-petstore/blob/master/src/main/resources/openapi.yaml)",
+    "version": "1.0.27",
+    "termsOfService": "http://swagger.io/terms/",
+    "contact": {
+      "email": "apiteam@swagger.io"
+    }
+  },
+  "servers": [
+    {
+      "url": "localhost"
+    }
+  ],
+  "tags": [
+    {
+      "name": "pet",
+      "description": "Everything about your Pets",
+      "externalDocs": {
+        "url": "http://swagger.io",
+        "description": "Find out more"
+      }
+    },
+    {
+      "name": "store",
+      "description": "Access to Petstore orders"
+    },
+    {
+      "name": "user",
+      "description": "Operations about user",
+      "externalDocs": {
+        "url": "http://swagger.io",
+        "description": "Find out more about our store"
+      }
+    }
+  ],
+  "components": {
+    "schemas": {
+      "Category": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": "1"
+          },
+          "name": {
+            "type": "string",
+            "example": "\"Dogs\""
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "Order": {
+        "description": "Some Order",
+        "type": "object",
+        "properties": {
+          "pet_id": {
+            "type": "string",
+            "example": "\"doggie\""
+          },
+          "quantity": {
+            "type": "integer",
+            "example": "7"
+          },
+          "id": {
+            "type": "integer",
+            "example": "10"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatus",
+            "example": "\"approved\"",
+            "description": "Order Status"
+          },
+          "ship_date": {
+            "type": "string"
+          },
+          "complete": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "pet_id",
+          "quantity",
+          "ship_date",
+          "status",
+          "complete"
+        ]
+      },
+      "ApiResponse": {
+        "type": "object",
+        "properties": {
+          "ty": {
+            "type": "string"
+          },
+          "code": {
+            "type": "integer"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "ty",
+          "message"
+        ]
+      },
+      "Tag": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "Pet": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/PetStatus"
+          },
+          "id": {
+            "type": "integer",
+            "example": "10"
+          },
+          "name": {
+            "type": "string",
+            "example": "\"doggie\""
+          },
+          "category": {
+            "$ref": "#/components/schemas/Category"
+          },
+          "photo_urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "$ref": "#/components/schemas/Tag"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "last_name": {
+            "type": "string",
+            "example": "\"James\""
+          },
+          "password": {
+            "type": "string",
+            "example": "\"12345\""
+          },
+          "id": {
+            "type": "integer",
+            "example": "10"
+          },
+          "user_status": {
+            "type": "integer",
+            "example": "1",
+            "description": "User Status"
+          },
+          "first_name": {
+            "type": "string",
+            "example": "\"John\""
+          },
+          "email": {
+            "type": "string",
+            "example": "\"john@email.com\""
+          },
+          "username": {
+            "type": "string",
+            "example": "\"theUser\""
+          },
+          "phone": {
+            "type": "string",
+            "example": "\"12345\""
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "first_name",
+          "last_name",
+          "email",
+          "password",
+          "phone",
+          "user_status"
+        ]
+      },
+      "PetStatus": {
+        "type": "string",
+        "enum": [
+          "available",
+          "pending",
+          "sold"
+        ],
+        "example": "available"
+      },
+      "OrderStatus": {
+        "type": "string",
+        "enum": [
+          "placed",
+          "approved",
+          "delivered"
+        ],
+        "example": "approved"
+      }
+    },
+    "securitySchemes": {
+      "api_key": {
+        "type": "apiKey",
+        "name": "api_key",
+        "in": "header"
+      },
+      "petstore_auth": {
+        "type": "oauth2",
+        "flows": {
+          "implicit": {
+            "authorizationUrl": "https://petstore3.swagger.io/oauth/authorize",
+            "scopes": {
+              "write:pets": "modify pets in your account",
+              "read:pets": "read your pets"
+            }
+          }
+        }
+      }
+    }
+  }
+}

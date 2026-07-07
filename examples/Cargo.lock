@@ -499,7 +499,7 @@ dependencies = [
 
 [[package]]
 name = "proc_macro_argue"
-version = "0.0.0"
+version = "0.1.1"
 dependencies = [
  "syn",
 ]
