@@ -1,11 +1,10 @@
 use std::{collections::HashMap, convert::identity};
 
 use proc_macro_argue::{ArgumentList, argue};
-use syn::Item::Impl;
 
 use crate::{
     ResultIterator,
-    spec::{SPEC, SecurityScheme, Spec},
+    spec::{SPEC, Spec},
 };
 
 argue! {
@@ -65,6 +64,45 @@ argue! {
     ImplicitScope(syn::LitStr, syn::token::Comma, syn::LitStr)
 }
 
+trait ParseArgument<'a> {
+    type Arg;
+
+    fn parse_iter<R: 'a>(
+        self,
+        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
+    ) -> impl Iterator<Item = Result<R, syn::Error>>;
+
+    fn parse<R: 'a>(
+        self,
+        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
+    ) -> Result<Option<R>, syn::Error>;
+}
+
+impl<'a, I: 'a, T: 'a> ParseArgument<'a> for I
+where
+    I: IntoIterator<Item = (&'a syn::Ident, &'a T)>,
+{
+    type Arg = T;
+
+    fn parse<R: 'a>(
+        self,
+        map: fn(arg: &T) -> Result<R, syn::Error>,
+    ) -> Result<Option<R>, syn::Error> {
+        self.parse_iter(map)
+            .nth(0)
+            .map(|r| r.map(Some))
+            .map_or(Ok(None), identity)
+    }
+
+    fn parse_iter<R: 'a>(
+        self,
+        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
+    ) -> impl Iterator<Item = Result<R, syn::Error>> {
+        self.into_iter().map(|(.., v)| v).map(map)
+    }
+}
+
+#[rustfmt::skip]
 pub fn apply_meta(
     (_, args): (&syn::Ident, &ArgumentList<syn::MetaList>),
 ) -> Result<(), syn::Error> {
@@ -73,78 +111,48 @@ pub fn apply_meta(
     let args: ArgumentList<MetaArgument> = syn::parse2(quote::quote! {#args})?;
 
     let mut spec = SPEC.get();
+    let info = &mut spec.info;
 
-    let title = argue!(args may have Title)?.map(|(.., lit)| lit.value());
-    spec.info.title = title;
+    info.title              = argue!(args may have Title)?          .parse(lit_value)?;
+    info.description        = argue!(args may have Description)?    .parse(lit_value)?;
+    info.terms_of_service   = argue!(args may have TermsOfService)? .parse(lit_value)?;
+    info.version            = argue!(args may have Version)?        .parse(lit_value)?;
+    spec.external_docs      = argue!(args may have ExternalDocs)?   .parse(external_docs)?;
+    spec.info.contact       = argue!(args may have Contact)?        .parse(contact)?;
+    spec.tags               = argue!(args may repeat Tag)           .parse_iter(tag).ok()?;
+    spec.servers            = argue!(args may repeat Server)        .parse_iter(server).ok()?;
 
-    let desc = argue!(args may have Description)?.map(|(.., lit)| lit.value());
-    spec.info.description = desc;
-
-    let tos = argue!(args may have TermsOfService)?.map(|(.., lit)| lit.value());
-    spec.info.terms_of_service = tos;
-
-    let version = argue!(args may have Version)?.map(|(.., lit)| lit.value());
-    spec.info.version = version;
-
-    let external_docs = argue!(args may have ExternalDocs)?
-        .map(|(.., docs)| docs)
-        .map(parse_external_docs_arg)
-        .map(|r| r.map(Some))
-        .map_or(Ok(None), identity)?;
-    spec.external_docs = external_docs;
-
-    let servers = argue!(args may repeat Server)
-        .map(|(.., server)| server)
-        .map(parse_server_arg)
-        .ok()?;
-    spec.servers = servers;
-
-    let contact = argue!(args may have Contact)?
-        .map(|(.., contact)| contact)
-        .map(parse_contact_arg)
-        .map(|r| r.map(Some))
-        .map_or(Ok(None), identity)?;
-    spec.info.contact = contact;
-
-    let tags = argue!(args may repeat Tag)
-        .map(|(.., tag)| tag)
-        .map(parse_tag_arg)
-        .ok()?;
-    spec.tags = tags;
-
-    let security_schemes = argue!(args may have SecuritySchemes)?
-        .map(|(.., scheme)| scheme)
-        .map(parse_security_schemes)
-        .map(|r| r.map(Some))
-        .map_or(Ok(None), identity)?
+    spec.components.security_schemes = argue!(args may have SecuritySchemes)?
+        .parse(security_schemes)?
         .unwrap_or_default();
-    spec.components.security_schemes.extend(security_schemes);
 
     Ok(())
 }
 
-fn parse_security_schemes(
-    arg: &ArgumentList<SecuritySchemeArgument>,
-) -> Result<Vec<(String, super::SecurityScheme)>, syn::Error> {
-    use SecuritySchemeArgument::*;
-    let api_key = argue!(arg may repeat ApiKey)
-        .map(|(.., v)| v)
-        .map(parse_api_key_arg)
-        .ok()?
-        .into_iter()
-        .map(|(s, v)| (s, super::SecurityScheme::ApiKey(v)));
-
-    let oauth2 = argue!(arg may repeat OAuth2)
-        .map(|(.., v)| v)
-        .map(parse_oauth2_key_arg)
-        .ok()?
-        .into_iter()
-        .map(|(s, v)| (s, super::SecurityScheme::OAuth2(v)));
-
-    Ok(Vec::from_iter(api_key.into_iter().chain(oauth2)))
+fn lit_value(lit: &syn::LitStr) -> Result<String, syn::Error> {
+    Ok(lit.value())
 }
 
-fn parse_oauth2_key_arg(
+fn security_schemes(
+    arg: &ArgumentList<SecuritySchemeArgument>,
+) -> Result<HashMap<String, super::SecurityScheme>, syn::Error> {
+    use SecuritySchemeArgument::*;
+    let api_key = argue!(arg may repeat ApiKey)
+        .parse_iter(api_key)
+        .map(|r| r.map(|(s, v)| (s, super::SecurityScheme::ApiKey(v))))
+        .ok()?;
+
+    let oauth2 = argue!(arg may repeat OAuth2)
+        .parse_iter(oauth2)
+        .map(|r| r.map(|(s, v)| (s, super::SecurityScheme::OAuth2(v))))
+        .ok()?;
+
+    Ok(HashMap::from_iter(Vec::from_iter(
+        api_key.into_iter().chain(oauth2),
+    )))
+}
+
+fn oauth2(
     arg: &ArgumentList<OAuth2SchemeArgument>,
 ) -> Result<(String, super::OAuth2Scheme), syn::Error> {
     use OAuth2SchemeArgument::*;
@@ -152,26 +160,20 @@ fn parse_oauth2_key_arg(
     let name = argue!(arg must have Name).map(|(.., lit)| lit.value())?;
     let flows = argue!(arg must have Flows)
         .map(|(.., v)| v)
-        .and_then(parse_oauth2_flow_arg)?;
+        .and_then(oauth2_flow)?;
 
     Ok((name, super::OAuth2Scheme { flows }))
 }
 
-fn parse_oauth2_flow_arg(
-    arg: &ArgumentList<FlowArgument>,
-) -> Result<super::OAuth2SchemeFlows, syn::Error> {
+fn oauth2_flow(arg: &ArgumentList<FlowArgument>) -> Result<super::OAuth2SchemeFlows, syn::Error> {
     use FlowArgument::*;
 
-    let implicit = argue!(arg may have Implicit)?
-        .map(|(.., v)| v)
-        .map(parse_implicit_flow_arg)
-        .map(|r| r.map(Some))
-        .map_or(Ok(None), identity)?;
+    let implicit = argue!(arg may have Implicit)?.parse(implicit_flow)?;
 
     Ok(super::OAuth2SchemeFlows { implicit })
 }
 
-fn parse_implicit_flow_arg(
+fn implicit_flow(
     arg: &ArgumentList<ImplicitFlowArgument>,
 ) -> Result<super::ImplicitOAuth2Flow, syn::Error> {
     use ImplicitFlowArgument::*;
@@ -187,7 +189,7 @@ fn parse_implicit_flow_arg(
     })
 }
 
-fn parse_api_key_arg(
+fn api_key(
     arg: &ArgumentList<ApiKeySchemeArgument>,
 ) -> Result<(String, super::ApiKeyScheme), syn::Error> {
     use ApiKeySchemeArgument::*;
@@ -195,48 +197,44 @@ fn parse_api_key_arg(
     let name = argue!(arg must have Name).map(|(.., lit)| lit.value())?;
     let is_in = argue!(arg must have In).map(|(.., lit)| lit.value())?;
 
-    let mut segs = name.split("_");
-
     Ok((name.clone(), super::ApiKeyScheme { name, is_in }))
 }
 
-fn parse_server_arg(arg: &ArgumentList<ServerArgument>) -> Result<super::Server, syn::Error> {
+fn server(arg: &ArgumentList<ServerArgument>) -> Result<super::Server, syn::Error> {
     use ServerArgument::*;
-    let (.., url) = argue!(arg must have Url)?;
-    Ok(super::Server { url: url.value() })
+    let url = argue!(arg must have Url).map(|(.., v)| v.value())?;
+
+    Ok(super::Server { url })
 }
 
-fn parse_contact_arg(arg: &ArgumentList<ContactArgument>) -> Result<super::Contact, syn::Error> {
+fn contact(arg: &ArgumentList<ContactArgument>) -> Result<super::Contact, syn::Error> {
     use ContactArgument::*;
-    let (.., email) = argue!(arg must have Email)?;
-    Ok::<_, syn::Error>(super::Contact {
-        email: email.value(),
-    })
+    let email = argue!(arg must have Email).map(|(.., v)| v.value())?;
+
+    Ok(super::Contact { email: email })
 }
 
-fn parse_external_docs_arg(
+fn external_docs(
     arg: &ArgumentList<ExternalDocsArgument>,
 ) -> Result<super::ExternalDocs, syn::Error> {
     use ExternalDocsArgument::*;
-    let description = argue!(arg may have Description)?.map(|(.., desc)| desc.value());
-    let (.., url) = argue!(arg must have Url)?;
+    let description = argue!(arg may have Description)?.parse(lit_value)?;
+    let url = argue!(arg must have Url).map(|(.., v)| v.value())?;
+
     Ok(super::ExternalDocs {
         description,
-        url: url.value(),
+        url: url,
     })
 }
 
-fn parse_tag_arg(arg: &ArgumentList<TagArgument>) -> Result<super::Tag, syn::Error> {
+fn tag(arg: &ArgumentList<TagArgument>) -> Result<super::Tag, syn::Error> {
     use TagArgument::*;
-    let (.., name) = argue!(arg must have Name)?;
-    let description = argue!(arg may have Description)?.map(|(.., desc)| desc.value());
-    let external_docs = argue!(arg may have ExternalDocs)?
-        .map(|(.., desc)| desc)
-        .map(parse_external_docs_arg)
-        .map(|r| r.map(Some))
-        .map_or(Ok(None), identity)?;
+    let name = argue!(arg must have Name).map(|(.., v)| v.value())?;
+    let description = argue!(arg may have Description)?.parse(lit_value)?;
+    let external_docs = argue!(arg may have ExternalDocs)?.parse(external_docs)?;
+
     Ok(super::Tag {
-        name: name.value(),
+        name: name,
         description,
         external_docs,
     })
