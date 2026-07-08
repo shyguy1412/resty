@@ -24,20 +24,23 @@ argue!(
     };
 );
 
-fn get_attr_once(attrs: &mut Vec<syn::Attribute>) -> Result<Option<syn::Attribute>, syn::Error> {
-    combine_errors(
-        attrs
-            .iter()
-            .skip(1)
-            .map(|attr| {
-                syn::Error::new_spanned(
-                    attr.path(),
-                    format!("{} attribute may not repeat", attr.path().to_token_stream()),
-                )
-            })
-            .collect(),
-    )
-    .and(Ok((0 < attrs.len()).then(|| attrs.remove(0))))
+fn get_attr_once(attrs: &mut Vec<syn::Attribute>) -> Result<Option<&syn::Attribute>, syn::Error> {
+    Ok(attrs
+        .iter()
+        .filter(|attr| {
+            match attr
+                .path()
+                .require_ident()
+                .ok()
+                .map(|i| i.to_string())
+                .as_ref()
+                .map(|s| s.as_str())
+            {
+                Some("schema") => true,
+                _ => false,
+            }
+        })
+        .nth(0))
 }
 
 pub fn schema_macro_impl(input: TokenStream) -> Result<TokenStream, syn::Error> {
@@ -59,7 +62,7 @@ pub fn schema_macro_impl(input: TokenStream) -> Result<TokenStream, syn::Error> 
     };
 
     let args: Option<ArgumentList<SchemaArgument>> = get_attr_once(&mut input.attrs)?
-        .map(|attr| attr.meta)
+        .map(|attr| &attr.meta)
         .map(|meta| meta.require_list().cloned())
         .map_or(Ok(None), |meta| meta.map(Some))?
         .map(|meta| meta.tokens)
@@ -163,7 +166,7 @@ fn declare_struct_schema(mut data_struct: syn::DataStruct) -> Result<SpecStruct,
                 .unwrap_or_else(|| i.to_string());
 
             let args: Option<ArgumentList<PropertyArgument>> = get_attr_once(&mut field.attrs)?
-                .map(|attr| attr.meta)
+                .map(|attr| &attr.meta)
                 .map(|meta| meta.require_list().cloned())
                 .map_or(Ok(None), |meta| meta.map(Some))?
                 .map(|meta| meta.tokens)
