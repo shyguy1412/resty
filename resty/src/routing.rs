@@ -7,8 +7,11 @@ use crate::{HttpMethod, Request, Response};
 /// This is not generally used directly since the `#[endpoint]` macro wraps your
 /// async function to comply with this Trait
 // type Handler = dyn for<'a> Fn(Request<'a>, Response<'a>) -> crate::EndpointTask<'a> + Sync;
-type Handler =
-    dyn for<'a, 'b> Fn(&'b mut Request<'a>, &'b mut Response<'a>) -> crate::EndpointTask<'b> + Sync;
+type Handler = dyn for<'a, 'data, 'b> Fn(
+        &'b mut Request<'a, 'data>,
+        &'b mut Response<'a>,
+    ) -> crate::EndpointTask<'b>
+    + Sync;
 
 /// A router that routes a path to an endpoint while resolving path parameters
 ///

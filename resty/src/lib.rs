@@ -54,6 +54,7 @@ impl std::fmt::Display for Error {
 }
 
 pub type Result = std::result::Result<(), Error>;
+pub use request::Readable as DeserializeStream;
 
 #[doc(hidden)]
 pub mod __private {
