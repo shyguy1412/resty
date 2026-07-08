@@ -4,9 +4,11 @@ mod parse;
 pub use parse::HttpMethod;
 
 mod request;
-pub use request::{Deserialize, Request};
+pub use request::Request;
 mod response;
-pub use response::{Response, Serialize};
+pub use response::Response;
+mod serde;
+pub use serde::*;
 
 mod routing;
 pub use routing::HandlerOrMiddleware::*;
@@ -54,7 +56,6 @@ impl std::fmt::Display for Error {
 }
 
 pub type Result = std::result::Result<(), Error>;
-pub use request::Readable as DeserializeStream;
 
 #[doc(hidden)]
 pub mod __private {

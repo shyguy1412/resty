@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use smol::io::AsyncWriteExt;
 
-use crate::Error;
+use crate::{Error, Serialize};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ResponseState {
@@ -139,16 +139,5 @@ impl<'a> Response<'a> {
         }
         let _ = self.status(500, "Internal Server Error").await;
         let _ = self.send(&"").await;
-    }
-}
-
-#[doc = include_str!("../docs/traits/Serialize.md")]
-pub trait Serialize {
-    fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
-}
-
-impl<T: Into<Vec<u8>> + Clone> Serialize for T {
-    fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(T::into(self.clone()))
     }
 }

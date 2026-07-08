@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 use smol::io::AsyncReadExt;
 use url::Url;
 
-use crate::{Error, HttpMethod};
+use crate::{Deserialize, Error, HttpMethod};
 
 pub type Readable<'a> = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send + 'a>>;
 
@@ -106,32 +106,3 @@ impl<'data> DerefMut for Request<'_, 'data> {
 //         }
 //     }
 // }
-
-#[doc = include_str!("../docs/traits/Deserialize.md")]
-pub trait Deserialize
-where
-    Self: Sized,
-{
-    fn deserialize<'a, 'b>(
-        data: &'a mut Readable<'b>,
-        bytes: usize,
-    ) -> impl Future<Output = Result<Self, Box<dyn std::error::Error>>>;
-}
-
-pub trait DeserializeBuffered
-where
-    Self: Sized,
-{
-    fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>>;
-}
-
-impl<T: DeserializeBuffered> Deserialize for T {
-    async fn deserialize<'a, 'b>(
-        data: &'a mut Readable<'b>,
-        bytes: usize,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let buf = &mut vec![0; bytes];
-        data.read_exact(buf).await?;
-        <Self as DeserializeBuffered>::deserialize(buf)
-    }
-}
