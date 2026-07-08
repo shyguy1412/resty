@@ -169,10 +169,9 @@ impl Router {
         method: HttpMethod,
     ) -> Option<(Vec<&'static Handler>, Vec<&'a str>)> {
         let (route, params, mut middlewares) = self.route(path)?;
+        let handler = route.method(method)?;
 
-        let handler = route.method(method);
-
-        handler.map(|handler| middlewares.push(handler));
+        middlewares.push(handler);
 
         Some((middlewares, params))
     }
