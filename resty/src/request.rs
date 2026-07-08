@@ -108,25 +108,6 @@ impl<'data> DerefMut for Request<'_, 'data> {
 // }
 
 #[doc = include_str!("../docs/traits/Deserialize.md")]
-// pub trait Deserialize
-// where
-//     Self: Sized,
-// {
-//     fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>>;
-// }
-
-// impl Deserialize for () {
-//     fn deserialize(_: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
-//         Err(Error::UnTypedRequest)?
-//     }
-// }
-// pub trait Deserialize
-// where
-//     Self: Sized,
-// {
-//     fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>>;
-// }
-
 pub trait Deserialize
 where
     Self: Sized,
@@ -137,10 +118,20 @@ where
     ) -> impl Future<Output = Result<Self, Box<dyn std::error::Error>>>;
 }
 
-// impl Deserialize for () {
-//     async fn deserialize<'a, 'b>(
-//         _: &'a mut Readable<'b>,
-//     ) -> Result<Self, Box<dyn std::error::Error>> {
-//         Err(Error::UnTypedRequest)?
-//     }
-// }
+pub trait DeserializeBuffered
+where
+    Self: Sized,
+{
+    fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>>;
+}
+
+impl<T: DeserializeBuffered> Deserialize for T {
+    async fn deserialize<'a, 'b>(
+        data: &'a mut Readable<'b>,
+        bytes: usize,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let buf = &mut vec![0; bytes];
+        data.read_exact(buf).await?;
+        <Self as DeserializeBuffered>::deserialize(buf)
+    }
+}
