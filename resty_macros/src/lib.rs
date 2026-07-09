@@ -4,6 +4,8 @@ mod routing;
 mod spec;
 
 use proc_macro::TokenStream;
+use quote::format_ident;
+use syn::parse_macro_input;
 
 macro_rules! tri {
     ($expr:expr => $body:expr) => {
@@ -33,6 +35,32 @@ pub fn endpoint(args: TokenStream, body: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn middleware(args: TokenStream, body: TokenStream) -> TokenStream {
     tri!(endpoint::middleware_macro_impl(args, body.clone()) => body)
+}
+
+#[doc(hidden)]
+#[proc_macro]
+pub fn error_code_to_ident(input: TokenStream) -> TokenStream {
+    let code = parse_macro_input!(input as syn::LitInt);
+    let span = code.span();
+    let ident = format_ident!("HTTPError{}", code.base10_digits());
+
+    quote::quote_spanned! {
+        span => #ident
+    }
+    .into()
+}
+
+#[doc(hidden)]
+#[proc_macro]
+pub fn error_code_to_struct(input: TokenStream) -> TokenStream {
+    let code = parse_macro_input!(input as syn::LitInt);
+    let span = code.span();
+    let ident = format_ident!("HTTPError{}", code.base10_digits());
+
+    quote::quote_spanned! {
+        span => pub struct #ident;
+    }
+    .into()
 }
 
 #[proc_macro_derive(Schema, attributes(schema))]

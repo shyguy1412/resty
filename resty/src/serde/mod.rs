@@ -48,22 +48,22 @@ where
     fn demueslify(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>>;
 }
 
-// impl<T: Demueslify> DeserializeBuffered for T {
-//     fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
-//         Self::demueslify(data)
-//     }
-// }
+impl<T: Demueslify> DeserializeBuffered for T {
+    fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::demueslify(data)
+    }
+}
 
 #[doc = include_str!("../../docs/traits/Serialize.md")]
 pub trait Serialize {
     fn serialize(data: &Self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
 }
 
-// impl<T: Into<Vec<u8>> + Clone> Serialize for T {
-//     fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-//         Ok(T::into(self.clone()))
-//     }
-// }
+impl<T: Into<Vec<u8>> + Clone> Serialize for T {
+    fn serialize(data: &T) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        Ok(T::into(data.clone()))
+    }
+}
 
 pub trait ContentType: Serialize + Deserialize {
     const CONTENT_TYPE: &'static str;

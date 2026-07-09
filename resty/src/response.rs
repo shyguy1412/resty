@@ -1,11 +1,8 @@
-use std::{
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
-};
+use std::ops::{Deref, DerefMut};
 
 use smol::io::AsyncWriteExt;
 
-use crate::{ContentType, Error, Serialize, response};
+use crate::{ContentType, Error, Serialize};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ResponseState {

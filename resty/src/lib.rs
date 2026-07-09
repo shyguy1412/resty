@@ -11,6 +11,8 @@ pub use response::{Response, RestResponse};
 mod serde;
 pub use serde::*;
 
+pub mod http_error;
+
 mod routing;
 pub use routing::HandlerOrMiddleware::*;
 pub use routing::*;
