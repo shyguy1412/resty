@@ -51,6 +51,13 @@ fn handler_impl(
     let args: ArgumentList<HandlerArgument> = syn::parse(args)?;
     let router = argue!(args may have Router)?
         .map(|(.., value)| value.clone())
+        //transform module path to macro path
+        .map(|mut router| {
+            router
+                .segments
+                .push(router.segments.last().cloned().unwrap());
+            router
+        })
         .map_or_else(routing::default_router, Ok)?;
 
     let headers: Vec<_> = argue!(args may repeat Header)
