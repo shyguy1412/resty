@@ -63,9 +63,11 @@ pub fn router(args: TokenStream, body: TokenStream) -> Result<TokenStream, syn::
             ident: static_decl_ident.to_string(),
         });
 
+    let router_module_path = basepath_str.unwrap_or(static_decl_ident.to_string());
+
     Ok(quote::quote! {
         #[allow(non_snake_case)]
-        #[path = #basepath_str]
+        #[path = #router_module_path]
         mod #static_decl_ident {
 
             use ::resty::__private::*;
