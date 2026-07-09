@@ -1,5 +1,3 @@
-#![cfg(all(feature = "serde", feature = "xml"))]
-
 use crate::{DeserializeBuffered, Serialize};
 
 pub struct XML<T: serde::de::DeserializeOwned + serde::Serialize>(pub T);

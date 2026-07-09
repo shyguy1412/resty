@@ -1,5 +1,3 @@
-#![cfg(all(feature = "serde", feature = "json"))]
-
 use crate::{DeserializeBuffered, Serialize};
 
 pub struct Json<T: serde::de::DeserializeOwned + serde::Serialize>(pub T);

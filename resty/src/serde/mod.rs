@@ -1,9 +1,13 @@
 pub use crate::request::Readable as DeserializeStream;
 pub use smol::io::AsyncReadExt;
 
+#[cfg(all(feature = "serde", feature = "json"))]
 mod json;
+#[cfg(all(feature = "serde", feature = "json"))]
 pub use json::*;
+#[cfg(all(feature = "serde", feature = "xml"))]
 mod xml;
+#[cfg(all(feature = "serde", feature = "xml"))]
 pub use xml::*;
 
 #[doc = include_str!("../../docs/traits/Deserialize.md")]
