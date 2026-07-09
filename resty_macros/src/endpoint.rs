@@ -45,8 +45,8 @@ fn handler_impl(
     variant: fn(&ArgumentList<HandlerArgument>, &syn::Ident) -> Result<syn::Expr, syn::Error>,
 ) -> Result<TokenStream, syn::Error> {
     use HandlerArgument::*;
-    // let handler_fn = syn::parse::<syn::ItemFn>(body)?;
-    let handler_fn = validate_handler(syn::parse(body)?)?;
+    let handler_fn = syn::parse::<syn::ItemFn>(body)?;
+    // let handler_fn = validate_handler(syn::parse(body)?)?;
     let fn_ident = &handler_fn.sig.ident;
     let slice_ident = format_ident!("__{fn_ident}_route");
 

@@ -23,37 +23,12 @@ use crate::schemas::Pet;
     Method(PUT)
 )]
 async fn put_pet<'a, 'b>(req: &mut Request<'a, 'b>, res: &mut Response<'a>) -> resty::Result {
-    let Json(body): Json<Pet> = req.body().await?;
-    res.respond(XML(body)).await?;
-    Ok(())
-}
+    // let Json(body): Json<Pet> = req.body().await?;
+    // res.respond(XML(body)).await?;
+    // res.status(400, "Bad Request").await?;
+    // res.close().await;
+    // res.close().await;
 
-#[endpoint(
-    Meta(
-        Tag("pet"),
-        Summary("Add a newper to the store"),
-        Request(
-            Description("Create a new pet in the store"),
-            Schema("application/json", Pet),
-            Schema("application/xml", Pet),
-            Schema("application/x-www-form-urlencoded", Pet),
-            Required
-        ),
-        // Response(
-        //     Code(200),
-        //     Description("Successful operation"),
-        //     Schema("application/json", Pet),
-        //     Schema("application/xml", Pet),
-        // ),
-        // Response(Code(400), Description("Invalid input")),
-        // Response(Code(404), Description("Pet not found")),
-        // Response(Code(422), Description("Validation exception")),
-        // Response(Default, Description("Unexpected error")),
-        Security(Name("petstore_auth"), Scope("write:pets"), Scope("read:pets"))
-    ),
-    Method(POST)
-)]
-async fn post_pet<'a, 'b>(req: &mut Request<'a, 'b>, res: &mut Response<'a>) -> resty::Result {
-    // res.ok(&"Ok").await?;
+    res.respond(resty::http_error::HTTP_ERROR_400).await?;
     Ok(())
 }

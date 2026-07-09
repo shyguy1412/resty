@@ -58,7 +58,23 @@ pub fn error_code_to_struct(input: TokenStream) -> TokenStream {
     let ident = format_ident!("HTTPError{}", code.base10_digits());
 
     quote::quote_spanned! {
-        span => pub struct #ident;
+        span =>
+        #[doc(hidden)]
+        pub struct #ident;
+    }
+    .into()
+}
+
+#[doc(hidden)]
+#[proc_macro]
+pub fn error_code_to_const(input: TokenStream) -> TokenStream {
+    let code = parse_macro_input!(input as syn::LitInt);
+    let span = code.span();
+    let struct_ident = format_ident!("HTTPError{}", code.base10_digits());
+    let ident = format_ident!("HTTP_ERROR_{}", code.base10_digits());
+
+    quote::quote_spanned! {
+        span => pub const #ident: crate::NoBody<#struct_ident> = crate::NoBody(#struct_ident);
     }
     .into()
 }

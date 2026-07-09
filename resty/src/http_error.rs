@@ -1,12 +1,13 @@
 #![cfg(feature = "http_error")]
 
-use resty_macros::{error_code_to_ident, error_code_to_struct};
+use resty_macros::{error_code_to_const, error_code_to_ident, error_code_to_struct};
 
 const NO_HEADERS: &'static [(&'static str, &'static str)] = &[];
 
 macro_rules! http_error {
     ($($code:literal => $reason:literal),*$(,)?) => ($(
         error_code_to_struct!($code);
+        error_code_to_const!($code);
 
         impl crate::RestResponse<crate::NoBody<error_code_to_ident!($code)>>
             for error_code_to_ident!($code)
@@ -15,6 +16,7 @@ macro_rules! http_error {
             const REASON: &'static str = $reason;
             const HEADERS: &'static [(&'static str, &'static str)] = NO_HEADERS;
         }
+
     )*)
 }
 

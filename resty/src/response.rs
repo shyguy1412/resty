@@ -145,6 +145,6 @@ impl<'a> Response<'a> {
             return;
         }
         let _ = self.status(500, "Internal Server Error").await;
-        // let _ = self.send(&"").await;
+        let _ = self.send(&"").await;
     }
 }

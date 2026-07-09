@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 serde = { version = "1.0.228", features = ["derive"] }
-resty = { path = "../../resty", features = ["serde", "json", "xml"]}
+resty = { path = "../../resty", features = ["serde", "json", "xml", "http_error"]}
 serde_json = "1.0.150"
 serde-xml-rs = "0.8.2"
 
