@@ -1,10 +1,10 @@
-use std::{collections::HashMap, convert::identity};
+use std::collections::HashMap;
 
 use proc_macro_argue::{ArgumentList, argue};
 
 use crate::{
     ResultIterator,
-    spec::{SPEC, Spec},
+    spec::{ParseArgument, SPEC, Spec},
 };
 
 argue! {
@@ -64,44 +64,6 @@ argue! {
     ImplicitScope(syn::LitStr, syn::token::Comma, syn::LitStr)
 }
 
-trait ParseArgument<'a> {
-    type Arg;
-
-    fn parse_iter<R: 'a>(
-        self,
-        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
-    ) -> impl Iterator<Item = Result<R, syn::Error>>;
-
-    fn parse<R: 'a>(
-        self,
-        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
-    ) -> Result<Option<R>, syn::Error>;
-}
-
-impl<'a, I: 'a, T: 'a> ParseArgument<'a> for I
-where
-    I: IntoIterator<Item = (&'a syn::Ident, &'a T)>,
-{
-    type Arg = T;
-
-    fn parse<R: 'a>(
-        self,
-        map: fn(arg: &T) -> Result<R, syn::Error>,
-    ) -> Result<Option<R>, syn::Error> {
-        self.parse_iter(map)
-            .nth(0)
-            .map(|r| r.map(Some))
-            .map_or(Ok(None), identity)
-    }
-
-    fn parse_iter<R: 'a>(
-        self,
-        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
-    ) -> impl Iterator<Item = Result<R, syn::Error>> {
-        self.into_iter().map(|(.., v)| v).map(map)
-    }
-}
-
 #[rustfmt::skip]
 pub fn apply_meta(
     (_, args): (&syn::Ident, &ArgumentList<syn::MetaList>),
@@ -117,8 +79,8 @@ pub fn apply_meta(
     info.description        = argue!(args may have Description)?    .parse(lit_value)?;
     info.terms_of_service   = argue!(args may have TermsOfService)? .parse(lit_value)?;
     info.version            = argue!(args may have Version)?        .parse(lit_value)?;
+    info.contact            = argue!(args may have Contact)?        .parse(contact)?;
     spec.external_docs      = argue!(args may have ExternalDocs)?   .parse(external_docs)?;
-    spec.info.contact       = argue!(args may have Contact)?        .parse(contact)?;
     spec.tags               = argue!(args may repeat Tag)           .parse_iter(tag).ok()?;
     spec.servers            = argue!(args may repeat Server)        .parse_iter(server).ok()?;
 

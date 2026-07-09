@@ -4,6 +4,9 @@ pub use schema::*;
 mod meta;
 pub use meta::*;
 
+mod path;
+pub use path::*;
+
 use std::{
     collections::HashMap,
     convert::identity,
@@ -281,4 +284,42 @@ fn decl_file() -> std::fs::File {
         .truncate(true)
         .open(std::env::var("RESTY_DECL_GEN").expect("Must have a path"))
         .expect("Can not open declaration file")
+}
+
+trait ParseArgument<'a> {
+    type Arg;
+
+    fn parse_iter<R: 'a>(
+        self,
+        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
+    ) -> impl Iterator<Item = Result<R, syn::Error>>;
+
+    fn parse<R: 'a>(
+        self,
+        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
+    ) -> Result<Option<R>, syn::Error>;
+}
+
+impl<'a, I: 'a, T: 'a> ParseArgument<'a> for I
+where
+    I: IntoIterator<Item = (&'a syn::Ident, &'a T)>,
+{
+    type Arg = T;
+
+    fn parse<R: 'a>(
+        self,
+        map: fn(arg: &T) -> Result<R, syn::Error>,
+    ) -> Result<Option<R>, syn::Error> {
+        self.parse_iter(map)
+            .nth(0)
+            .map(|r| r.map(Some))
+            .map_or(Ok(None), identity)
+    }
+
+    fn parse_iter<R: 'a>(
+        self,
+        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
+    ) -> impl Iterator<Item = Result<R, syn::Error>> {
+        self.into_iter().map(|(.., v)| v).map(map)
+    }
 }
