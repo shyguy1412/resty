@@ -3,7 +3,7 @@ use proc_macro_argue::{ArgumentList, argue};
 use quote::ToTokens;
 
 use super::*;
-use crate::{Reparse, ResultIterator, combine_errors};
+use crate::{Reparse, ResultIterator};
 
 argue!(
     SchemaArgument {

@@ -1,0 +1,5 @@
+{
+    "rust-analyzer.server.extraEnv": {
+        "RESTY_PATH_ROUTING_HINT": "petstore/main.rs"
+    }
+}

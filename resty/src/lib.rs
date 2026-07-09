@@ -1,4 +1,5 @@
 #![doc = include_str!("../README.md")]
+pub use resty_macros::*;
 
 mod parse;
 pub use parse::HttpMethod;
@@ -12,15 +13,13 @@ pub use serde::*;
 
 mod routing;
 pub use routing::HandlerOrMiddleware::*;
+pub use routing::*;
 
 mod runtime;
 pub use runtime::*;
 
 mod socket;
 pub use socket::*;
-
-pub use resty_macros::*;
-pub use routing::*;
 
 #[derive(Debug, Clone)]
 pub enum Error {
@@ -63,23 +62,4 @@ pub mod __private {
 
     /// This trait is a marker for Schemas. Do not implement manually, use the Schema derive macro
     pub trait Schema {}
-
-    // /// This trait is used as a marker for publicly exported structs
-    // /// this way the documentation can validate that all documented structs are known
-    // pub trait Public {}
-
-    // macro_rules! public {
-    //     ($($ty:ty)*) => ($(impl Public for $ty {})*);
-    // }
-
-    // /// A hint to obscure the value
-    // pub type Password = String;
-
-    // public! {
-    //     String
-    //     f32
-    //     f64
-    //     i32
-    //     i64
-    // }
 }

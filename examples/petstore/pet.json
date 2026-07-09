@@ -1,0 +1,42 @@
+{
+  "id": 5,
+  "name": "Bartholomew",
+  "category": {
+    "id": 42,
+    "name": "Doggo"
+  },
+  "photo_urls": [
+    "Lorem ipsum dolor sit amet,",
+    "consetetur sadipscing elitr,",
+    "sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat,",
+    "sed diam voluptua.",
+    "At vero eos et accusam et justo duo dolores et ea rebum.",
+    "Stet clita kasd gubergren,",
+    "no sea takimata sanctus est Lorem ipsum dolor sit amet.",
+    "Lorem ipsum dolor sit amet, consetetur sadipscing elitr,",
+    "sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat,",
+    "sed diam voluptua.",
+    "At vero eos et accusam et justo duo dolores et ea rebum.",
+    "Stet clita kasd gubergren,",
+    "no sea takimata sanctus est Lorem ipsum dolor sit amet."
+  ],
+  "tags": [
+    {"id": 50, "name": "big"},
+    {"id": 51, "name": "brown"},
+    {"id": 52, "name": "fluffy"}
+  ],
+  "status": "available"
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

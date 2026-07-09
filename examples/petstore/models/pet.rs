@@ -12,13 +12,14 @@ pub struct Pet {
     category: Option<super::Category>,
 
     photo_urls: Option<Vec<String>>,
-    tags: Option<super::Tag>,
+    tags: Option<Vec<super::Tag>>,
 
     #[schema(Ref(PetStatus))]
     status: Option<Status>,
 }
 
 #[derive(Deserialize, Serialize, Schema)]
+#[serde(rename_all = "lowercase")]
 #[schema(Name(PetStatus))]
 enum Status {
     #[schema(Example)]

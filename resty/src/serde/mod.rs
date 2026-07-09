@@ -1,7 +1,12 @@
 pub use crate::request::Readable as DeserializeStream;
 pub use smol::io::AsyncReadExt;
 
-#[doc = include_str!("../docs/traits/Deserialize.md")]
+mod json;
+pub use json::*;
+mod xml;
+pub use xml::*;
+
+#[doc = include_str!("../../docs/traits/Deserialize.md")]
 pub trait Deserialize
 where
     Self: Sized,
@@ -44,7 +49,7 @@ impl<T: Demueslify> DeserializeBuffered for T {
     }
 }
 
-#[doc = include_str!("../docs/traits/Serialize.md")]
+#[doc = include_str!("../../docs/traits/Serialize.md")]
 pub trait Serialize {
     fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
 }
