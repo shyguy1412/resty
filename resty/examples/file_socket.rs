@@ -110,7 +110,8 @@ async fn get_hello_world<'a, 'b>(
     _req: &mut Request<'a, 'b>,
     res: &mut Response<'a>,
 ) -> resty::Result {
-    res.ok(&"Hello World!").await?;
+    res.status(200, "OK").await?;
+    res.send(&"Hello World!").await?;
 
     Ok(())
 }

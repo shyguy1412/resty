@@ -1,8 +1,11 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+};
 
 use smol::io::AsyncWriteExt;
 
-use crate::{Error, Serialize};
+use crate::{ContentType, Error, Serialize, response};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ResponseState {
@@ -34,6 +37,16 @@ impl DerefMut for Response<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.writeable
     }
+}
+
+pub trait RestResponse<T>
+where
+    Self: Sized,
+    T: ContentType,
+{
+    const CODE: u16;
+    const REASON: &'static str;
+    const HEADERS: &'static [(&'static str, &'static str)];
 }
 
 impl<'a> Response<'a> {
@@ -90,14 +103,13 @@ impl<'a> Response<'a> {
         Ok(())
     }
 
-    /// Requires the Status Line to already be sent
-    /// Prefer using the `ok` and `err` methods
+    ///send arbitrary serializable data
     pub async fn send(&mut self, data: &impl Serialize) -> Result<(), Error> {
         if self.state != ResponseState::Header {
             return Err(Error::StateError);
         }
 
-        let data = data.serialize().map_err(|_| Error::SerializeError)?;
+        let data = Serialize::serialize(data).map_err(|_| Error::SerializeError)?;
 
         self.writeable
             .write_all(&format!("Content-Length: {}\r\n\r\n", data.len()).into_bytes())
@@ -122,15 +134,13 @@ impl<'a> Response<'a> {
         Ok(())
     }
 
-    pub async fn ok(&mut self, body: &impl Serialize) -> Result<(), Error> {
-        self.status(200, "OK").await?;
-        self.send(body).await
-    }
-
-    pub async fn err(&mut self, status: (u16, &str), err: &impl Serialize) -> Result<(), Error> {
-        let (code, reason) = status;
-        self.status(code, reason).await?;
-        self.send(err).await
+    ///Send a response as defined by the openapi rest spec
+    pub async fn respond<C: ContentType>(&mut self, response: C) -> Result<(), Error> {
+        self.status(C::Response::CODE, C::Response::REASON).await?;
+        self.headers(C::Response::HEADERS).await?;
+        self.headers(&[("Content-Type", C::CONTENT_TYPE)]).await?;
+        self.send(&response).await?;
+        Ok(())
     }
 
     pub async fn close(&mut self) {
@@ -138,6 +148,6 @@ impl<'a> Response<'a> {
             return;
         }
         let _ = self.status(500, "Internal Server Error").await;
-        let _ = self.send(&"").await;
+        // let _ = self.send(&"").await;
     }
 }

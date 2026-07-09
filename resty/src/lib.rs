@@ -7,7 +7,7 @@ pub use parse::HttpMethod;
 mod request;
 pub use request::Request;
 mod response;
-pub use response::Response;
+pub use response::{Response, RestResponse};
 mod serde;
 pub use serde::*;
 

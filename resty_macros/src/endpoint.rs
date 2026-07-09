@@ -3,11 +3,11 @@ use proc_macro_argue::{ArgumentList, argue};
 use quote::{ToTokens, format_ident};
 use syn::spanned::Spanned;
 
-use crate::{endpoint::HandlerArgument::Method, *};
+use crate::{endpoint::HandlerArgument::Method, spec::add_path, *};
 
 argue! {
     HandlerArgument {
-        Method: ArgumentList<syn::Expr>,
+        Method: ArgumentList<syn::Ident>,
         Router: syn::Path,
         Route: syn::LitStr,
         Header: HeaderArgument,
@@ -29,6 +29,7 @@ pub fn endpoint_macro_impl(
     args: TokenStream,
     body: TokenStream,
 ) -> Result<TokenStream, syn::Error> {
+    add_path(args.clone())?;
     handler_impl(args, body, endpoint_variant)
 }
 pub fn middleware_macro_impl(
@@ -44,6 +45,7 @@ fn handler_impl(
     variant: fn(&ArgumentList<HandlerArgument>, &syn::Ident) -> Result<syn::Expr, syn::Error>,
 ) -> Result<TokenStream, syn::Error> {
     use HandlerArgument::*;
+    // let handler_fn = syn::parse::<syn::ItemFn>(body)?;
     let handler_fn = validate_handler(syn::parse(body)?)?;
     let fn_ident = &handler_fn.sig.ident;
     let slice_ident = format_ident!("__{fn_ident}_route");

@@ -1,6 +1,6 @@
 use resty::{Json, Request, Response, XML, endpoint};
 
-use crate::models::Pet;
+use crate::schemas::Pet;
 
 #[endpoint(
     Meta(
@@ -14,23 +14,17 @@ use crate::models::Pet;
             Schema("application/x-www-form-urlencoded", Pet),
             Required
         ),
-        Response(
-            Code(200),
-            Description("Successful operation"),
-            Schema("application/json", Pet),
-            Schema("application/xml", Pet),
-        ),
-        Response(Code(400), Description("Invalid ID supplied")),
-        Response(Code(404), Description("Pet not found")),
-        Response(Code(422), Description("Validation exception")),
-        Response(Default, Description("Unexpected error")),
+        Response(Pet, "Operation Successful"),
+        Response(400, "Invalid ID supplied"),
+        Response(404, "Pet not found"),
+        Response(422, "Validation exception"),
         Security(Name("petstore_auth"), Scope("write:pets"), Scope("read:pets"))
     ),
     Method(PUT)
 )]
 async fn put_pet<'a, 'b>(req: &mut Request<'a, 'b>, res: &mut Response<'a>) -> resty::Result {
     let Json(body): Json<Pet> = req.body().await?;
-    res.ok(&XML(body)).await?;
+    res.respond(XML(body)).await?;
     Ok(())
 }
 
@@ -45,21 +39,21 @@ async fn put_pet<'a, 'b>(req: &mut Request<'a, 'b>, res: &mut Response<'a>) -> r
             Schema("application/x-www-form-urlencoded", Pet),
             Required
         ),
-        Response(
-            Code(200),
-            Description("Successful operation"),
-            Schema("application/json", Pet),
-            Schema("application/xml", Pet),
-        ),
-        Response(Code(400), Description("Invalid input")),
-        Response(Code(404), Description("Pet not found")),
-        Response(Code(422), Description("Validation exception")),
-        Response(Default, Description("Unexpected error")),
+        // Response(
+        //     Code(200),
+        //     Description("Successful operation"),
+        //     Schema("application/json", Pet),
+        //     Schema("application/xml", Pet),
+        // ),
+        // Response(Code(400), Description("Invalid input")),
+        // Response(Code(404), Description("Pet not found")),
+        // Response(Code(422), Description("Validation exception")),
+        // Response(Default, Description("Unexpected error")),
         Security(Name("petstore_auth"), Scope("write:pets"), Scope("read:pets"))
     ),
     Method(POST)
 )]
 async fn post_pet<'a, 'b>(req: &mut Request<'a, 'b>, res: &mut Response<'a>) -> resty::Result {
-    res.ok(&"Ok").await?;
+    // res.ok(&"Ok").await?;
     Ok(())
 }

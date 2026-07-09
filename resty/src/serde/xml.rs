@@ -1,4 +1,4 @@
-use crate::{DeserializeBuffered, Serialize};
+use crate::{ContentType, DeserializeBuffered, RestResponse, Serialize};
 
 pub struct XML<T: serde::de::DeserializeOwned + serde::Serialize>(pub T);
 impl<T> DeserializeBuffered for XML<T>
@@ -14,9 +14,20 @@ impl<T> Serialize for XML<T>
 where
     T: serde::de::DeserializeOwned + serde::Serialize,
 {
-    fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    fn serialize(data: &Self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut vec = Vec::new();
-        serde_xml_rs::to_writer(&mut vec, &self.0)?;
+        serde_xml_rs::to_writer(&mut vec, &data.0)?;
         Ok(vec)
+    }
+}
+
+impl<T: serde::de::DeserializeOwned + serde::Serialize + RestResponse<XML<T>>> ContentType
+    for XML<T>
+{
+    const CONTENT_TYPE: &'static str = "application/xml";
+    type Response = T;
+
+    fn new(val: T) -> Self {
+        Self(val)
     }
 }

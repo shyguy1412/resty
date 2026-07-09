@@ -1,4 +1,4 @@
-use crate::{DeserializeBuffered, Serialize};
+use crate::{ContentType, DeserializeBuffered, RestResponse, Serialize};
 
 pub struct Json<T: serde::de::DeserializeOwned + serde::Serialize>(pub T);
 impl<T> DeserializeBuffered for Json<T>
@@ -14,7 +14,18 @@ impl<T> Serialize for Json<T>
 where
     T: serde::de::DeserializeOwned + serde::Serialize,
 {
-    fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(serde_json::to_vec(&self.0)?)
+    fn serialize(data: &Self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        Ok(serde_json::to_vec(&data.0)?)
+    }
+}
+
+impl<T: serde::de::DeserializeOwned + serde::Serialize + RestResponse<Json<T>>> ContentType
+    for Json<T>
+{
+    const CONTENT_TYPE: &'static str = "application/json";
+    type Response = T;
+
+    fn new(val: T) -> Self {
+        Self(val)
     }
 }

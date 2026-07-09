@@ -1,11 +1,18 @@
 mod schema;
-pub use schema::*;
+use schema::*;
 
 mod meta;
-pub use meta::*;
+use meta::*;
 
 mod path;
-pub use path::*;
+use path::*;
+
+mod response;
+
+pub use meta::apply_meta;
+pub use path::add_path;
+pub use response::response_macro_impl;
+pub use schema::schema_macro_impl;
 
 use std::{
     collections::HashMap,
@@ -145,9 +152,6 @@ struct ImplicitOAuth2Flow {
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     scopes: HashMap<String, String>,
 }
-
-#[derive(Serialize)]
-struct Path;
 
 #[derive(Serialize)]
 struct SpecEnum {

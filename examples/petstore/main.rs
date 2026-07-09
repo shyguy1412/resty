@@ -8,7 +8,8 @@ use std::{
 
 use resty::{Router, TcpScocket};
 
-mod models;
+mod responses;
+mod schemas;
 
 //IDEA: make router a struct with a router trait and derive macro
 

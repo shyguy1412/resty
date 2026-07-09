@@ -1,3 +1,4 @@
+use crate::RestResponse;
 pub use crate::request::Readable as DeserializeStream;
 pub use smol::io::AsyncReadExt;
 
@@ -47,19 +48,48 @@ where
     fn demueslify(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>>;
 }
 
-impl<T: Demueslify> DeserializeBuffered for T {
-    fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
-        Self::demueslify(data)
-    }
-}
+// impl<T: Demueslify> DeserializeBuffered for T {
+//     fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
+//         Self::demueslify(data)
+//     }
+// }
 
 #[doc = include_str!("../../docs/traits/Serialize.md")]
 pub trait Serialize {
-    fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
+    fn serialize(data: &Self) -> Result<Vec<u8>, Box<dyn std::error::Error>>;
 }
 
-impl<T: Into<Vec<u8>> + Clone> Serialize for T {
-    fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-        Ok(T::into(self.clone()))
+// impl<T: Into<Vec<u8>> + Clone> Serialize for T {
+//     fn serialize(&self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+//         Ok(T::into(self.clone()))
+//     }
+// }
+
+pub trait ContentType: Serialize + Deserialize {
+    const CONTENT_TYPE: &'static str;
+    type Response: RestResponse<Self>;
+    fn new(val: Self::Response) -> Self;
+}
+
+pub struct NoBody<T>(pub T);
+impl<T> Serialize for NoBody<T> {
+    fn serialize(_: &Self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        Ok(Vec::new())
+    }
+}
+impl<T> Deserialize for NoBody<T> {
+    async fn deserialize<'a, 'b>(
+        _: &'a mut DeserializeStream<'b>,
+        _: usize,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Err(crate::Error::UnTypedRequest)?
+    }
+}
+
+impl<T: RestResponse<NoBody<T>>> ContentType for NoBody<T> {
+    const CONTENT_TYPE: &'static str = "none";
+    type Response = T;
+    fn new(val: Self::Response) -> Self {
+        Self(val)
     }
 }

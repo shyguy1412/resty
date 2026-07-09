@@ -93,7 +93,7 @@ pub fn schema_macro_impl(input: TokenStream) -> Result<TokenStream, syn::Error> 
 
     let mut spec = SPEC.get();
     if spec.components.schemas.insert(name, schema).is_some() {
-        return Err(syn::Error::new_spanned(name_ident, "duplicate schema name"));
+        // return Err(syn::Error::new_spanned(name_ident, "duplicate schema name"));
     }
 
     Ok(quote::quote! {

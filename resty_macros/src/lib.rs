@@ -40,6 +40,11 @@ pub fn derive_schema(input: TokenStream) -> TokenStream {
     tri!(spec::schema_macro_impl(input) => TokenStream::new())
 }
 
+#[proc_macro_derive(Response, attributes(response))]
+pub fn derive_response(input: TokenStream) -> TokenStream {
+    tri!(spec::response_macro_impl(input) => TokenStream::new())
+}
+
 trait ResultIterator<T> {
     fn ok(self) -> Result<Vec<T>, syn::Error>;
 }
