@@ -4,7 +4,7 @@ use proc_macro_argue::{ArgumentList, ParseArgument, argue};
 
 use crate::{
     ResultIterator,
-    spec::{SPEC, Spec, is_io_allowed, lit_value},
+    spec::{SPEC, Spec, lit_value},
 };
 
 argue! {

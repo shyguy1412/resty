@@ -3,7 +3,11 @@ use std::ops::{Deref, DerefMut};
 use smol::io::AsyncReadExt;
 use url::Url;
 
-use crate::{Deserialize, Error, HttpMethod};
+use crate::{
+    Deserialize,
+    Error::{self, ParseError},
+    HttpMethod, Parse,
+};
 
 pub type Readable<'a> = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send + 'a>>;
 
@@ -75,6 +79,12 @@ impl<'a, 'data: 'a> Request<'a, 'data> {
             .map_err(|e| Error::ParseError(e.to_string()));
 
         res
+    }
+
+    //Parse some value out of the request body.
+    //Useful for requests that stream multiple elements like a newline separated list of JSON objects
+    pub async fn parse<P: Parse>(&mut self) -> Result<P, Error> {
+        P::parse(self).map_err(|e| ParseError(e.to_string()))
     }
 }
 

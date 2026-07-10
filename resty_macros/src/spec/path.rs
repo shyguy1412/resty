@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, convert::identity, fmt::format};
+use std::{collections::BTreeMap, convert::identity, thread::scope};
 
 use proc_macro::TokenStream;
 use proc_macro_argue::{ArgumentList, ParseArgument, argue};
@@ -83,7 +83,11 @@ pub fn add_path(
     let responses = argue!(meta may repeat Response)
         .parse_iter(parse_response)
         .ok()?;
-    let security = argue!(meta may have Security)?.parse(parse_security)?;
+    let security = argue!(meta may repeat Security)
+        .parse_iter(parse_security)
+        .ok()?
+        .into_iter()
+        .collect::<Vec<_>>();
     let request_body = argue!(meta may have Request)?.parse(parse_request_body)?;
 
     let mut spec = SPEC.get();
@@ -105,7 +109,7 @@ pub fn add_path(
                 operation_id: format!("{method}{}", route.replace("/", "_")),
                 parameters: vec![],
                 responses: responses.clone(),
-                security: vec![],
+                security: security.clone(),
             },
         );
     }
@@ -160,6 +164,17 @@ fn parse_request_schema(arg: &SchemaArgument) -> Result<(String, super::SchemaRe
     ))
 }
 
-fn parse_security(arg: &ArgumentList<SecurityArgument>) -> Result<(), syn::Error> {
-    Ok(())
+fn parse_security(
+    arg: &ArgumentList<SecurityArgument>,
+) -> Result<BTreeMap<String, Vec<String>>, syn::Error> {
+    use SecurityArgument::*;
+
+    let name = argue!(arg must have Name)?.1.value();
+    let scope = argue!(arg may repeat Scope).parse_iter(lit_value).ok()?;
+
+    let mut security = BTreeMap::new();
+
+    security.insert(name, scope);
+
+    Ok(security)
 }

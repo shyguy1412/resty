@@ -136,6 +136,7 @@ fn middleware_variant(
     Ok(quote::quote! {::resty::Middleware(&#fn_ident)})
 }
 
+#[allow(unused)]
 fn validate_handler(mut handler: syn::ItemFn) -> Result<syn::ItemFn, syn::Error> {
     let handler_ident = &handler.sig.ident;
     let args: Vec<_> = handler

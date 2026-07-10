@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use proc_macro_argue::{ArgumentList, argue};
+use proc_macro_argue::{ArgumentList, ParseArgument, argue};
 use quote::ToTokens;
 
 use super::*;
@@ -54,30 +54,21 @@ fn declare_schema(input: &syn::DeriveInput) -> Result<(), syn::Error> {
         }
     };
 
-    let args: Option<ArgumentList<SchemaArgument>> = get_helper_attr(&input.attrs)?
+    let args: ArgumentList<SchemaArgument> = get_helper_attr(&input.attrs)?
         .map(|attr| &attr.meta)
         .map(|meta| meta.require_list().cloned())
         .map_or(Ok(None), |meta| meta.map(Some))?
         .map(|meta| meta.tokens)
         .map(syn::parse2)
-        .map_or(Ok(None), |meta| meta.map(Some))?;
-
-    let name = args
-        .as_ref()
-        .map(|args| argue!(args may have Name))
         .map_or(Ok(None), |meta| meta.map(Some))?
-        .and_then(identity)
-        .map_or(ident.to_string(), |(.., name)| {
-            name_ident = name;
-            name.to_string()
-        });
+        .unwrap_or_default();
 
-    let description = args
-        .as_ref()
-        .map(|args| argue!(args may have Description))
-        .map_or(Ok(None), |meta| meta.map(Some))?
-        .and_then(identity)
-        .map(|(.., desc)| desc.value());
+    let name = argue!(args may have Name)?.map_or(ident.to_string(), |(.., name)| {
+        name_ident = name;
+        name.to_string()
+    });
+
+    let description = argue!(args may have Description)?.parse(lit_value)?;
 
     let schema: Schema = Schema {
         schema,
@@ -155,52 +146,24 @@ fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<SpecStruct, sy
                 .map(|ident| ident.to_string())
                 .unwrap_or_else(|| i.to_string());
 
-            let args: Option<ArgumentList<PropertyArgument>> = get_helper_attr(&field.attrs)?
+            let args: ArgumentList<PropertyArgument> = get_helper_attr(&field.attrs)?
                 .map(|attr| &attr.meta)
                 .map(|meta| meta.require_list().cloned())
                 .map_or(Ok(None), |meta| meta.map(Some))?
                 .map(|meta| meta.tokens)
                 .map(syn::parse2)
-                .map_or(Ok(None), |meta| meta.map(Some))?;
-
-            let description = args
-                .as_ref()
-                .map(|args| argue!(args may have Description))
                 .map_or(Ok(None), |meta| meta.map(Some))?
-                .and_then(identity)
-                .map(|(.., desc)| desc.value());
+                .unwrap_or_default();
 
-            let example = args
-                .as_ref()
-                .map(|args| argue!(args may have Example))
-                .map_or(Ok(None), |meta| meta.map(Some))?
-                .and_then(identity)
-                .map(|(.., example)| match example {
-                    syn::Lit::Str(lit_str) => lit_str.value(),
-                    rest => rest.to_token_stream().to_string(),
-                });
+            let description = argue!(args may have Description)?.parse(lit_value)?;
 
-            let format = args
-                .as_ref()
-                .map(|args| argue!(args may have Format))
-                .map_or(Ok(None), |meta| meta.map(Some))?
-                .and_then(identity)
-                .map(|(.., format)| format.value());
-
-            let reference = args
-                .as_ref()
-                .map(|args| argue!(args may have Ref))
-                .map_or(Ok(None), |meta| meta.map(Some))?
-                .and_then(identity)
-                .map(|(.., r)| PropertyType::Ref(r.to_string()));
-
-            let required_arg = args
-                .as_ref()
-                .map(|args| argue!(args may have Required))
-                .map_or(Ok(None), |meta| meta.map(Some))?
-                .and_then(identity)
-                .is_some();
-
+            let example = argue!(args may have Example)?.parse(|example| match example {
+                syn::Lit::Str(lit_str) => Ok(lit_str.value()),
+                rest => Ok(rest.to_token_stream().to_string()),
+            })?;
+            let format = argue!(args may have Format)?.parse(lit_value)?;
+            let reference = argue!(args may have Ref)?.map(|i| PropertyType::Ref(i.1.to_string()));
+            let required_arg = argue!(args may have Required)?.is_some();
             let (ty, infered_meta) = get_ty_ident(&field.ty)?;
 
             let format = format.and(infered_meta.format);

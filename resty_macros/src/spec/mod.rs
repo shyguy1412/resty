@@ -1,13 +1,7 @@
-mod schema;
-use schema::*;
-
 mod meta;
-use meta::*;
-
 mod path;
-use path::*;
-
 mod response;
+mod schema;
 
 pub use meta::apply_meta;
 pub use path::add_path;
@@ -17,15 +11,11 @@ pub use schema::schema_macro_impl;
 use std::{
     collections::BTreeMap,
     convert::identity,
-    hash::Hash,
     ops::{Deref, DerefMut},
-    sync::{LazyLock, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    sync::{LazyLock, PoisonError, RwLock, RwLockWriteGuard},
 };
 
-use serde::{
-    Serialize,
-    ser::{SerializeMap, SerializeStruct},
-};
+use serde::{Serialize, ser::SerializeMap};
 
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -253,7 +243,7 @@ pub struct Method {
     request_body: Option<RequestBody>,
     #[serde(serialize_with = "response_type")]
     responses: Vec<ResponseType>,
-    security: Vec<Security>,
+    security: Vec<BTreeMap<String, Vec<String>>>,
 }
 
 #[derive(Serialize, Clone)]
@@ -342,9 +332,6 @@ fn response_type<S: serde::Serializer>(
 fn prefix_schema_ref<S: serde::Serializer>(str: &String, serializer: S) -> Result<S::Ok, S::Error> {
     serializer.serialize_str(&format!("#/components/schemas/{str}"))
 }
-
-#[derive(Serialize)]
-pub struct Security {}
 
 static SPEC: LazyLock<RwLock<Specification>> = LazyLock::new(Default::default);
 

@@ -93,3 +93,11 @@ impl<T: RestResponse<NoBody<T>>> ContentType for NoBody<T> {
         Self(val)
     }
 }
+
+pub trait Parse
+where
+    Self: Sized,
+{
+    type Error: std::error::Error;
+    fn parse(stream: &mut DeserializeStream) -> Result<Self, Self::Error>;
+}
