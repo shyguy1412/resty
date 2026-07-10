@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use smol::io::AsyncWriteExt;
 
-use crate::{ContentType, Error, Serialize};
+use crate::{ContentType, Error, RestResponse, Serialize};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ResponseState {
@@ -34,16 +34,6 @@ impl DerefMut for Response<'_> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.writeable
     }
-}
-
-pub trait RestResponse<T>
-where
-    Self: Sized,
-    T: ContentType,
-{
-    const CODE: u16;
-    const REASON: &'static str;
-    const HEADERS: &'static [(&'static str, &'static str)];
 }
 
 impl<'a> Response<'a> {
@@ -132,9 +122,12 @@ impl<'a> Response<'a> {
     }
 
     ///Send a response as defined by the openapi rest spec
-    pub async fn respond<C: ContentType>(&mut self, response: C) -> Result<(), Error> {
-        self.status(C::Response::CODE, C::Response::REASON).await?;
-        self.headers(C::Response::HEADERS).await?;
+    pub async fn respond<C: ContentType<R>, R: RestResponse>(
+        &mut self,
+        response: C,
+    ) -> Result<(), Error> {
+        self.status(R::CODE, R::REASON).await?;
+        self.headers(R::HEADERS).await?;
         self.headers(&[("Content-Type", C::CONTENT_TYPE)]).await?;
         self.send(&response).await?;
         Ok(())

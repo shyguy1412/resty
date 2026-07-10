@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize, Schema, Response)]
 #[response(
     Status(200, "OK"),
-    ContentType("application/json", resty::Json),
-    ContentType("application/xml", resty::XML)
+    Description("Operation Successful"),
+    ContentType("application/json"),
+    ContentType("application/xml")
 )]
 pub struct Pet {
     #[schema(Example(10), Required)]

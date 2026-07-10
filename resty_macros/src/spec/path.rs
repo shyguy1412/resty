@@ -1,53 +1,14 @@
-use std::{collections::BTreeMap, convert::identity};
+use std::collections::BTreeMap;
 
 use proc_macro::TokenStream;
 use proc_macro_argue::{ArgumentList, ParseArgument, argue};
 
 use crate::{
-    Reparse, ResultIterator,
-    endpoint::{HandlerArgument, parse_route},
+    ResultIterator,
+    endpoint::*,
     routing,
     spec::{RequestBody, SPEC, Spec, lit_value},
 };
-
-argue! {
-    MetaArgument {
-        Tag: syn::LitStr,
-        Summary: syn::LitStr,
-        Description: syn::LitStr,
-        Request: ArgumentList<RequestArgument>,
-        Response: ResponseArgument,
-        Security: ArgumentList<SecurityArgument>
-    };
-    RequestArgument {
-        Description: syn::LitStr,
-        Schema: SchemaArgument,
-        Required
-    };
-    ResponseArgument(ResponseType, syn::token::Comma, syn::LitStr);
-    SchemaArgument(syn::LitStr, syn::token::Comma, syn::Ident);
-    SecurityArgument {
-        Name: syn::LitStr,
-        Scope: syn::LitStr
-    }
-}
-
-enum ResponseType {
-    Path(syn::Path),
-    Code(syn::LitInt),
-}
-
-impl syn::parse::Parse for ResponseType {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        use ResponseType::*;
-        let lookahead = input.lookahead1();
-        if lookahead.peek(syn::LitInt) {
-            Ok(Code(input.parse::<syn::LitInt>()?))
-        } else {
-            Ok(Path(input.parse::<syn::Path>()?))
-        }
-    }
-}
 
 pub fn add_path(
     args: TokenStream, // (_, args): (&syn::Ident, &ArgumentList<syn::MetaList>),
@@ -55,7 +16,6 @@ pub fn add_path(
                        // method: &ArgumentList<syn::Expr>,
 ) -> Result<(), syn::Error> {
     use crate::endpoint::HandlerArgument::*;
-    use MetaArgument::*;
     let args: ArgumentList<HandlerArgument> = syn::parse(args)?;
 
     let route = argue!(args may have Route)?
@@ -67,27 +27,19 @@ pub fn add_path(
         .map(|(.., m)| m.to_string().to_ascii_lowercase())
         .collect::<Vec<_>>();
 
-    let Some(meta) = argue!(args may have Meta)?
-        .map(|m| m.1.reparse::<ArgumentList<MetaArgument>>())
-        .map(|r| r.map(Some))
-        .map_or(Ok(None), identity)?
-    else {
-        return Ok(());
-    };
-
-    let tags = argue!(meta may repeat Tag).parse_iter(lit_value).ok()?;
-    let summary = argue!(meta may have Summary)?.parse(lit_value)?;
-    let description = argue!(meta may have Description)?.parse(lit_value)?;
-    let responses = argue!(meta may repeat Response)
+    let tags = argue!(args may repeat Tag).parse_iter(lit_value).ok()?;
+    let summary = argue!(args may have Summary)?.parse(lit_value)?;
+    let description = argue!(args may have Description)?.parse(lit_value)?;
+    let responses = argue!(args may repeat Response)
         .parse_iter(parse_response)
         .ok()?;
 
-    let security = argue!(meta may repeat Security)
+    let security = argue!(args may repeat Security)
         .parse_iter(parse_security)
         .ok()?
         .into_iter()
         .collect::<Vec<_>>();
-    let request_body = argue!(meta may have Request)?.parse(parse_request_body)?;
+    let request_body = argue!(args may have Request)?.parse(parse_request_body)?;
 
     let mut spec = SPEC.get();
     let path = spec
@@ -116,20 +68,17 @@ pub fn add_path(
     Ok(())
 }
 
-fn parse_response(arg: &ResponseArgument) -> Result<super::ResponseType, syn::Error> {
-    let ResponseArgument(ty, _, desc) = arg;
-
-    let r = match ty {
+fn parse_response(arg: &ResponseType) -> Result<super::ResponseType, syn::Error> {
+    let r = match arg {
         ResponseType::Path(path) => super::ResponseType::Ref(
             path.segments
                 .last()
                 .ok_or(syn::Error::new_spanned(path, "Can not parse path"))?
                 .ident
                 .to_string(),
-            desc.value(),
         ),
-        ResponseType::Code(lit_int) => {
-            super::ResponseType::Raw(lit_int.base10_digits().to_string(), desc.value())
+        ResponseType::Code(ContentlessResponseArgument(lit_int, _, lit_str)) => {
+            super::ResponseType::Raw(lit_int.base10_digits().to_string(), lit_str.value())
         }
     };
 
@@ -137,7 +86,7 @@ fn parse_response(arg: &ResponseArgument) -> Result<super::ResponseType, syn::Er
 }
 
 fn parse_request_body(arg: &ArgumentList<RequestArgument>) -> Result<RequestBody, syn::Error> {
-    use RequestArgument::*;
+    use crate::endpoint::RequestArgument::*;
 
     let description = argue!(arg may have Description)?.parse(lit_value)?;
     let required = argue!(arg may have Required)?.is_some();
@@ -166,7 +115,7 @@ fn parse_request_schema(arg: &SchemaArgument) -> Result<(String, super::SchemaRe
 fn parse_security(
     arg: &ArgumentList<SecurityArgument>,
 ) -> Result<BTreeMap<String, Vec<String>>, syn::Error> {
-    use SecurityArgument::*;
+    use crate::endpoint::SecurityArgument::*;
 
     let name = argue!(arg must have Name)?.1.value();
     let scope = argue!(arg may repeat Scope).parse_iter(lit_value).ok()?;

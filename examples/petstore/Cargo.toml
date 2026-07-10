@@ -12,3 +12,5 @@ serde-xml-rs = "0.8.2"
 [[bin]]
 name = "petstore"
 path = "main.rs"
+
+[lints]

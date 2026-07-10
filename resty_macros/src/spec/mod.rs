@@ -258,8 +258,8 @@ pub struct RequestBody {
 enum ResponseType {
     //code, description
     Raw(String, String),
-    //ref, description
-    Ref(String, String),
+    //ref
+    Ref(String),
 }
 
 #[derive(Serialize)]
@@ -306,12 +306,12 @@ fn response_type<S: serde::Serializer>(
                     content: BTreeMap::new(),
                 },
             )?,
-            ResponseType::Ref(reference, desc) => match schemas.get(reference) {
+            ResponseType::Ref(reference) => match schemas.get(reference) {
                 Some(r) => responses_struct.serialize_entry(
                     &r.code,
                     &Response {
                         code: r.code.clone(),
-                        description: desc.clone(),
+                        description: r.description.clone(),
                         content: r.content.clone(),
                     },
                 )?,
@@ -319,7 +319,7 @@ fn response_type<S: serde::Serializer>(
                     reference,
                     &Response {
                         code: reference.clone(),
-                        description: desc.clone(),
+                        description: Default::default(),
                         content: BTreeMap::new(),
                     },
                 )?,

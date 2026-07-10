@@ -21,13 +21,6 @@ where
     }
 }
 
-impl<T: serde::de::DeserializeOwned + serde::Serialize + RestResponse<XML<T>>> ContentType
-    for XML<T>
-{
+impl<T: serde::de::DeserializeOwned + serde::Serialize + RestResponse> ContentType<T> for XML<T> {
     const CONTENT_TYPE: &'static str = "application/xml";
-    type Response = T;
-
-    fn new(val: T) -> Self {
-        Self(val)
-    }
 }

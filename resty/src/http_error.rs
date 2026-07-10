@@ -4,13 +4,13 @@ const NO_HEADERS: &'static [(&'static str, &'static str)] = &[];
 
 macro_rules! http_error {
     ($($ident:ident => $reason:literal),*$(,)?) => ($(
-        #[allow(non_upper_case_globals)]
-        pub const $ident: crate::NoBody<$ident::$ident> = crate::NoBody($ident::$ident);
+        pub use $ident::ERROR as $ident;
 
         #[allow(non_snake_case)]
         mod $ident {
+            pub const ERROR: crate::NoBody<$ident> = crate::NoBody($ident);
             pub struct $ident;
-            impl crate::RestResponse<crate::NoBody<$ident>> for $ident
+            impl crate::RestResponse for $ident
             {
                 const CODE: u16 = super::code_from_ident(stringify!($ident));
                 const REASON: &'static str = $reason;

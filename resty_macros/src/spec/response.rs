@@ -1,16 +1,16 @@
 use proc_macro::TokenStream;
-use proc_macro_argue::{ArgumentList, argue};
+use proc_macro_argue::{ArgumentList, ParseArgument, argue};
 use quote::ToTokens;
 
-use crate::spec::{SPEC, Spec, get_attr_once};
+use crate::spec::{SPEC, Spec, get_attr_once, lit_value};
 
 argue! {
     ResponseArgument {
-        // Description: syn::LitStr,
+        Description: syn::LitStr,
         Schema: syn::LitStr,
         Status: StatusArgument,
         Header: HeaderArgument,
-        ContentType: ContentTypeArgument,
+        ContentType: syn::LitStr,
     };
     StatusArgument(syn::LitInt, syn::token::Comma, syn::LitStr);
     ContentTypeArgument(syn::LitStr, syn::token::Comma, syn::Path);
@@ -41,24 +41,16 @@ pub fn response_macro_impl(input: TokenStream) -> Result<TokenStream, syn::Error
 
     let args: ArgumentList<ResponseArgument> =
         syn::parse2(attr.meta.require_list()?.tokens.clone())?;
-    let content_types = argue!(args may repeat ContentType).map(|(.., p)| &p.2);
+    // let content_types = argue!(args may repeat ContentType).map(|(.., p)| &p.2);
     let StatusArgument(code, _, reason) = argue!(args must have Status)?.1;
     let headers = argue!(args may repeat Header).map(|(.., h)| h);
 
     Ok(quote::quote! {
-    impl Pet {
+    impl ::resty::RestResponse for #ident {
         const CODE: u16 = #code;
         const REASON: &'static str = #reason;
         const HEADERS: &'static [(&'static str, &'static str)] = &[#(#headers),*];
     }
-
-    #(
-    impl ::resty::RestResponse<#content_types<#ident>> for #ident {
-        const CODE: u16 = Self::CODE;
-        const REASON: &'static str = Self::REASON;
-        const HEADERS: &'static [(&'static str, &'static str)] = Self::HEADERS;
-    }
-    )*
     }
     .into())
 }
@@ -66,17 +58,16 @@ fn declare_response(ident: &syn::Ident, input: proc_macro2::TokenStream) -> Resu
     use ResponseArgument::*;
     let meta_list: syn::MetaList = syn::parse2(input)?;
     let args: ArgumentList<ResponseArgument> = syn::parse2(meta_list.tokens)?;
-    let content_types =
-        argue!(args may repeat ContentType)
-            .map(|(.., p)| &p.0)
-            .map(|content_type| {
-                (
-                    content_type.value(),
-                    super::SchemaRef {
-                        schema: super::PropertyType::Ref(ident.to_string()),
-                    },
-                )
-            });
+    let content_types = argue!(args may repeat ContentType)
+        .map(|(.., p)| p.value())
+        .map(|content_type| {
+            (
+                content_type,
+                super::SchemaRef {
+                    schema: super::PropertyType::Ref(ident.to_string()),
+                },
+            )
+        });
 
     let StatusArgument(code, ..) = argue!(args must have Status)?.1;
     // let headers = argue!(args may repeat Header).map(|(.., h)| h);
@@ -84,10 +75,12 @@ fn declare_response(ident: &syn::Ident, input: proc_macro2::TokenStream) -> Resu
         .map(|(.., n)| n.value())
         .unwrap_or_else(|| ident.to_string());
 
+    let description = argue!(args must have Description)?.1.value();
+
     let response = super::Response {
         code: code.base10_digits().to_string(),
         content: content_types.collect(),
-        description: String::from(""),
+        description,
     };
     let mut spec = SPEC.get();
     spec.components.responses.entry(name).or_insert(response);

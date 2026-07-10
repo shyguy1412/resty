@@ -4,8 +4,6 @@ mod routing;
 mod spec;
 
 use proc_macro::TokenStream;
-use quote::format_ident;
-use syn::parse_macro_input;
 
 macro_rules! tri {
     ($expr:expr => $body:expr) => {
@@ -37,48 +35,6 @@ pub fn middleware(args: TokenStream, body: TokenStream) -> TokenStream {
     tri!(endpoint::middleware_macro_impl(args, body.clone()) => body)
 }
 
-// #[doc(hidden)]
-// #[proc_macro]
-// pub fn error_code_to_ident(input: TokenStream) -> TokenStream {
-//     let code = parse_macro_input!(input as syn::LitInt);
-//     let span = code.span();
-//     let ident = format_ident!("HTTPError{}", code.base10_digits());
-
-//     quote::quote_spanned! {
-//         span => #ident
-//     }
-//     .into()
-// }
-
-// #[doc(hidden)]
-// #[proc_macro]
-// pub fn error_code_to_struct(input: TokenStream) -> TokenStream {
-//     let code = parse_macro_input!(input as syn::LitInt);
-//     let span = code.span();
-//     let ident = format_ident!("HTTPError{}", code.base10_digits());
-
-//     quote::quote_spanned! {
-//         span =>
-//         #[doc(hidden)]
-//         pub struct #ident;
-//     }
-//     .into()
-// }
-
-// #[doc(hidden)]
-// #[proc_macro]
-// pub fn error_code_to_const(input: TokenStream) -> TokenStream {
-//     let code = parse_macro_input!(input as syn::LitInt);
-//     let span = code.span();
-//     let struct_ident = format_ident!("HTTPError{}", code.base10_digits());
-//     let ident = format_ident!("HTTP_ERROR_{}", code.base10_digits());
-
-//     quote::quote_spanned! {
-//         span => pub const #ident: crate::NoBody<#struct_ident> = crate::NoBody(#struct_ident);
-//     }
-//     .into()
-// }
-
 #[proc_macro_derive(Schema, attributes(schema))]
 pub fn derive_schema(input: TokenStream) -> TokenStream {
     tri!(spec::schema_macro_impl(input) => TokenStream::new())
@@ -101,18 +57,18 @@ impl<V, T: IntoIterator<Item = Result<V, syn::Error>>> ResultIterator<V> for T {
     }
 }
 
-trait Reparse: quote::ToTokens {
-    fn reparse<T: syn::parse::Parse>(&self) -> Result<T, syn::Error> {
-        syn::parse(self.to_token_stream().into())
-    }
+// trait Reparse: quote::ToTokens {
+//     fn reparse<T: syn::parse::Parse>(&self) -> Result<T, syn::Error> {
+//         syn::parse(self.to_token_stream().into())
+//     }
 
-    #[allow(unused)]
-    fn reparse_with<P: syn::parse::Parser>(&self, parser: P) -> Result<P::Output, syn::Error> {
-        parser.parse(self.to_token_stream().into())
-    }
-}
+//     #[allow(unused)]
+//     fn reparse_with<P: syn::parse::Parser>(&self, parser: P) -> Result<P::Output, syn::Error> {
+//         parser.parse(self.to_token_stream().into())
+//     }
+// }
 
-impl<T: quote::ToTokens> Reparse for T {}
+// impl<T: quote::ToTokens> Reparse for T {}
 
 fn collect_errors<V, E>(it: impl IntoIterator<Item = Result<V, E>>) -> (Vec<V>, Vec<E>) {
     it.into_iter()

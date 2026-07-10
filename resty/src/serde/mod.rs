@@ -1,4 +1,3 @@
-use crate::RestResponse;
 pub use crate::request::Readable as DeserializeStream;
 pub use smol::io::AsyncReadExt;
 
@@ -65,12 +64,6 @@ impl<T: Into<Vec<u8>> + Clone> Serialize for T {
     }
 }
 
-pub trait ContentType: Serialize + Deserialize {
-    const CONTENT_TYPE: &'static str;
-    type Response: RestResponse<Self>;
-    fn new(val: Self::Response) -> Self;
-}
-
 pub struct NoBody<T>(pub T);
 impl<T> Serialize for NoBody<T> {
     fn serialize(_: &Self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -86,12 +79,27 @@ impl<T> Deserialize for NoBody<T> {
     }
 }
 
-impl<T: RestResponse<NoBody<T>>> ContentType for NoBody<T> {
+pub trait ContentType<T>: Serialize + Deserialize {
+    const CONTENT_TYPE: &'static str;
+}
+
+pub trait RestResponse
+where
+    Self: Sized,
+{
+    const CODE: u16;
+    const REASON: &'static str;
+    const HEADERS: &'static [(&'static str, &'static str)];
+}
+
+impl<T: RestResponse> ContentType<T> for NoBody<T> {
     const CONTENT_TYPE: &'static str = "none";
-    type Response = T;
-    fn new(val: Self::Response) -> Self {
-        Self(val)
-    }
+}
+
+impl<R: RestResponse> RestResponse for Vec<R> {
+    const CODE: u16 = R::CODE;
+    const REASON: &'static str = R::REASON;
+    const HEADERS: &'static [(&'static str, &'static str)] = R::HEADERS;
 }
 
 pub trait Parse

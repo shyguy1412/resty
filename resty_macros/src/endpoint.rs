@@ -6,15 +6,52 @@ use syn::spanned::Spanned;
 use crate::{endpoint::HandlerArgument::Method, spec::add_path, *};
 
 argue! {
+    pub MiddlewareArgument {
+        Method: syn::Ident,
+        Router: syn::Path,
+        Route: syn::LitStr,
+    };
     pub HandlerArgument {
         Method: syn::Ident,
         Router: syn::Path,
         Route: syn::LitStr,
         Header: HeaderArgument,
-
-        Meta: ArgumentList<syn::MetaList>,
+        Tag: syn::LitStr,
+        Summary: syn::LitStr,
+        Description: syn::LitStr,
+        Request: ArgumentList<RequestArgument>,
+        Response: ResponseType,
+        Security: ArgumentList<SecurityArgument>
     };
+    pub RequestArgument {
+        Description: syn::LitStr,
+        Schema: SchemaArgument,
+        Required
+    };
+    pub SecurityArgument {
+        Name: syn::LitStr,
+        Scope: syn::LitStr
+    };
+    pub ContentlessResponseArgument(syn::LitInt, syn::token::Comma, syn::LitStr);
+    pub SchemaArgument(syn::LitStr, syn::token::Comma, syn::Ident);
     pub HeaderArgument(syn::LitStr, syn::token::Comma, syn::LitStr);
+}
+
+pub enum ResponseType {
+    Path(syn::Path),
+    Code(ContentlessResponseArgument),
+}
+
+impl syn::parse::Parse for ResponseType {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        use ResponseType::*;
+        let lookahead = input.lookahead1();
+        if lookahead.peek(syn::LitInt) {
+            Ok(Code(input.parse()?))
+        } else {
+            Ok(Path(input.parse()?))
+        }
+    }
 }
 
 impl ToTokens for HeaderArgument {
@@ -36,6 +73,8 @@ pub fn middleware_macro_impl(
     args: TokenStream,
     body: TokenStream,
 ) -> Result<TokenStream, syn::Error> {
+    //Restrict the args available for middlewares
+    let _: ArgumentList<MiddlewareArgument> = syn::parse(args.clone())?;
     handler_impl(args, body, middleware_variant)
 }
 

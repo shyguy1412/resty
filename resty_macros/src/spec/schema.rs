@@ -3,7 +3,7 @@ use proc_macro_argue::{ArgumentList, ParseArgument, argue};
 use quote::ToTokens;
 
 use super::*;
-use crate::{Reparse, ResultIterator};
+use crate::ResultIterator;
 
 pub fn schema_macro_impl(input: TokenStream) -> Result<TokenStream, syn::Error> {
     let input: syn::DeriveInput = syn::parse(input)?;
@@ -99,8 +99,8 @@ fn declare_enum_schema(data_enum: &syn::DataEnum) -> Result<SpecEnum, syn::Error
                 return Ok(default);
             };
 
-            let meta: syn::MetaList = attr.meta.reparse()?;
-            let args: ArgumentList<VariantArgument> = syn::parse2(meta.tokens)?;
+            let args: ArgumentList<VariantArgument> =
+                syn::parse2(attr.meta.require_list()?.tokens.clone())?;
 
             //todo: parse lit better
             let variant = argue!(args may have Repr)?

@@ -19,13 +19,6 @@ where
     }
 }
 
-impl<T: serde::de::DeserializeOwned + serde::Serialize + RestResponse<Json<T>>> ContentType
-    for Json<T>
-{
+impl<T: serde::de::DeserializeOwned + serde::Serialize + RestResponse> ContentType<T> for Json<T> {
     const CONTENT_TYPE: &'static str = "application/json";
-    type Response = T;
-
-    fn new(val: T) -> Self {
-        Self(val)
-    }
 }
