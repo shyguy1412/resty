@@ -62,8 +62,6 @@ mod schemas;
 static ROUTER: LazyLock<Router>;
 
 fn main() -> ExitCode {
-    println!("{}", *ROUTER);
-
     const ADDR: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 3333);
     if let Err(error) = resty::bind::<TcpScocket>(ADDR, &ROUTER) {
         println!("{error:?}");

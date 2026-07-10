@@ -20,11 +20,12 @@ use crate::schemas::Pet;
         Response(422, "Validation exception"),
         Security(Name("petstore_auth"), Scope("write:pets"), Scope("read:pets"))
     ),
-    Method(PUT)
+    Method(GET)
 )]
 async fn put_pet<'a, 'b>(req: &mut Request<'a, 'b>, res: &mut Response<'a>) -> resty::Result {
-    // let Json(body): Json<Pet> = req.body().await?;
-    // res.respond(XML(body)).await?;
+    let Json(body): Json<Pet> = req.body().await?;
+    res.respond(XML(body)).await?;
+
     // res.status(400, "Bad Request").await?;
     // res.close().await;
     // res.close().await;

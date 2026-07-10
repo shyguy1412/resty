@@ -42,7 +42,10 @@ pub fn middleware_macro_impl(
 fn handler_impl(
     args: TokenStream,
     body: TokenStream,
-    variant: fn(&ArgumentList<HandlerArgument>, &syn::Ident) -> Result<syn::Expr, syn::Error>,
+    variant: fn(
+        &ArgumentList<HandlerArgument>,
+        &syn::Ident,
+    ) -> Result<proc_macro2::TokenStream, syn::Error>,
 ) -> Result<TokenStream, syn::Error> {
     use HandlerArgument::*;
     let handler_fn = syn::parse::<syn::ItemFn>(body)?;
@@ -101,24 +104,21 @@ fn handler_impl(
 fn endpoint_variant(
     args: &ArgumentList<HandlerArgument>,
     fn_ident: &syn::Ident,
-) -> Result<syn::Expr, syn::Error> {
+) -> Result<proc_macro2::TokenStream, syn::Error> {
     use HandlerArgument::*;
     let method_arg = argue!(args must have Method)?;
-    let methods = method_arg.1.into_iter();
+    let methods = method_arg.1.iter();
 
-    let method_byte: syn::Expr = syn::parse2(quote::quote! {
-        {
-            use ::resty::HttpMethod::*;
-            #(#methods as u16 )|*
-        }
-    })?;
-    syn::parse2(quote::quote! {::resty::Handler(&#fn_ident, #method_byte)})
+    Ok(quote::quote! {::resty::Handler(&#fn_ident, {
+        use ::resty::HttpMethod::*;
+        #(#methods as u16 )|*
+    })})
 }
 
 fn middleware_variant(
     args: &ArgumentList<HandlerArgument>,
     fn_ident: &syn::Ident,
-) -> Result<syn::Expr, syn::Error> {
+) -> Result<proc_macro2::TokenStream, syn::Error> {
     if let Some((ident, ..)) = argue!(args may have Method)? {
         return Err(syn::Error::new_spanned(
             ident,
@@ -126,7 +126,7 @@ fn middleware_variant(
         ));
     }
 
-    syn::parse2(quote::quote! {::resty::Middleware(&#fn_ident)})
+    Ok(quote::quote! {::resty::Middleware(&#fn_ident)})
 }
 
 fn validate_handler(mut handler: syn::ItemFn) -> Result<syn::ItemFn, syn::Error> {

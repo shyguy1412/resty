@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use proc_macro_argue::{ArgumentList, argue};
 
 use crate::{
     ResultIterator,
-    spec::{ParseArgument, SPEC, Spec},
+    spec::{ParseArgument, SPEC, Spec, is_io_allowed},
 };
 
 argue! {
@@ -97,7 +97,7 @@ fn lit_value(lit: &syn::LitStr) -> Result<String, syn::Error> {
 
 fn security_schemes(
     arg: &ArgumentList<SecuritySchemeArgument>,
-) -> Result<HashMap<String, super::SecurityScheme>, syn::Error> {
+) -> Result<BTreeMap<String, super::SecurityScheme>, syn::Error> {
     use SecuritySchemeArgument::*;
     let api_key = argue!(arg may repeat ApiKey)
         .parse_iter(api_key)
@@ -109,7 +109,7 @@ fn security_schemes(
         .map(|r| r.map(|(s, v)| (s, super::SecurityScheme::OAuth2(v))))
         .ok()?;
 
-    Ok(HashMap::from_iter(Vec::from_iter(
+    Ok(BTreeMap::from_iter(Vec::from_iter(
         api_key.into_iter().chain(oauth2),
     )))
 }
@@ -143,7 +143,7 @@ fn implicit_flow(
     let authorization_url = argue!(arg must have AuthorizationUrl).map(|(.., v)| v.value())?;
     let scopes = argue!(arg may repeat Scope)
         .map(|(.., ImplicitScope(scope, _, desc))| (scope.value(), desc.value()))
-        .collect::<HashMap<_, _>>();
+        .collect::<BTreeMap<_, _>>();
 
     Ok(super::ImplicitOAuth2Flow {
         authorization_url,

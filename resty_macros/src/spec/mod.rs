@@ -15,13 +15,17 @@ pub use response::response_macro_impl;
 pub use schema::schema_macro_impl;
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap},
     convert::identity,
+    hash::Hash,
     ops::{Deref, DerefMut},
-    sync::{LazyLock, Mutex, MutexGuard},
+    sync::{LazyLock, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use serde::Serialize;
+use serde::{
+    Serialize,
+    ser::{SerializeMap, SerializeStruct},
+};
 
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -36,8 +40,8 @@ struct Specification {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     tags: Vec<Tag>,
 
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    paths: HashMap<String, Path>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    paths: BTreeMap<String, Path>,
     components: Components,
 }
 
@@ -112,12 +116,16 @@ struct ExternalDocs {
 #[derive(Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct Components {
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    schemas: HashMap<String, Schema>,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    request_bodies: HashMap<String, ()>,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    security_schemes: HashMap<String, SecurityScheme>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    schemas: BTreeMap<String, Schema>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    request_bodies: BTreeMap<String, ()>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    security_schemes: BTreeMap<String, SecurityScheme>,
+
+    //this is skipped and inlined into the paths
+    #[serde(skip)]
+    responses: BTreeMap<String, Response>,
 }
 
 #[derive(Serialize)]
@@ -149,8 +157,8 @@ struct OAuth2SchemeFlows {
 
 struct ImplicitOAuth2Flow {
     authorization_url: String,
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    scopes: HashMap<String, String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    scopes: BTreeMap<String, String>,
 }
 
 #[derive(Serialize)]
@@ -184,8 +192,8 @@ enum EnumOrStruct {
 #[derive(Serialize)]
 #[serde(tag = "type", rename = "object")]
 struct SpecStruct {
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
-    properties: HashMap<String, Property>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    properties: BTreeMap<String, Property>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     required: Vec<String>,
 }
@@ -198,17 +206,13 @@ struct Property {
     meta: PropertyMeta,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 // #[serde(untagged)]
 enum PropertyType {
     #[serde(rename = "type")]
     Type(String),
-    #[serde(rename = "$ref", serialize_with = "prefix_ref")]
+    #[serde(rename = "$ref", serialize_with = "prefix_schema_ref")]
     Ref(String),
-}
-
-pub fn prefix_ref<S: serde::Serializer>(str: &String, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&format!("#/components/schemas/{str}"))
 }
 
 #[derive(Serialize)]
@@ -232,18 +236,119 @@ impl PropertyMeta {
     }
 }
 
-static SPEC: LazyLock<Mutex<Specification>> = LazyLock::new(Default::default);
+#[derive(Serialize)]
+pub struct Path {
+    #[serde(flatten)]
+    methods: BTreeMap<String, Method>,
+}
 
-struct SpecGuard<T: DerefMut<Target = Specification>>(T);
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Method {
+    tags: Vec<String>,
+    summary: Option<String>,
+    description: Option<String>,
+    operation_id: String,
+    parameters: Vec<Parameter>,
+    #[serde(serialize_with = "response_type")]
+    responses: Vec<ResponseType>,
+    security: Vec<Security>,
+}
+
+#[derive(Serialize)]
+enum ResponseType {
+    //code, description
+    Raw(String, String),
+    //ref, description
+    Ref(String, String),
+}
+
+#[derive(Serialize)]
+pub struct Parameter {
+    name: String,
+    #[serde(rename = "in")]
+    is_in: String,
+    description: Option<String>,
+    required: bool,
+    explode: bool,
+    schema: String,
+}
+
+#[derive(Serialize)]
+pub struct Response {
+    #[serde(skip)]
+    code: String,
+    description: String,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    content: BTreeMap<String, ResponseBody>,
+}
+
+#[derive(Serialize, Clone)]
+struct ResponseBody {
+    schema: PropertyType,
+}
+
+fn response_type<S: serde::Serializer>(
+    responses: &Vec<ResponseType>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    let mut responses_struct = serializer.serialize_map(Some(responses.len()))?;
+
+    let spec = SPEC.read().map_or_else(PoisonError::into_inner, identity);
+    let schemas = &spec.components.responses;
+
+    for response in responses {
+        match response {
+            ResponseType::Raw(code, desc) => responses_struct.serialize_entry(
+                code,
+                &Response {
+                    code: code.clone(),
+                    description: desc.clone(),
+                    content: BTreeMap::new(),
+                },
+            )?,
+            ResponseType::Ref(reference, desc) => match schemas.get(reference) {
+                Some(r) => responses_struct.serialize_entry(
+                    &r.code,
+                    &Response {
+                        code: r.code.clone(),
+                        description: desc.clone(),
+                        content: r.content.clone(),
+                    },
+                )?,
+                None => responses_struct.serialize_entry(
+                    reference,
+                    &Response {
+                        code: reference.clone(),
+                        description: desc.clone(),
+                        content: BTreeMap::new(),
+                    },
+                )?,
+            },
+        }
+    }
+    responses_struct.end()
+}
+
+fn prefix_schema_ref<S: serde::Serializer>(str: &String, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&format!("#/components/schemas/{str}"))
+}
+
+#[derive(Serialize)]
+pub struct Security {}
+
+static SPEC: LazyLock<RwLock<Specification>> = LazyLock::new(Default::default);
+
+struct SpecGuard<T: DerefMut<Target = Specification>>(Option<T>);
 
 trait Spec<'a, T: DerefMut<Target = Specification>> {
     fn get(&'a self) -> SpecGuard<T>;
 }
 
-impl<'a> Spec<'a, MutexGuard<'a, Specification>> for LazyLock<Mutex<Specification>> {
-    fn get(&'a self) -> SpecGuard<MutexGuard<'a, Specification>> {
-        let guard = self.lock().map_or_else(|e| e.into_inner(), identity);
-        SpecGuard(guard)
+impl<'a> Spec<'a, RwLockWriteGuard<'a, Specification>> for LazyLock<RwLock<Specification>> {
+    fn get(&'a self) -> SpecGuard<RwLockWriteGuard<'a, Specification>> {
+        let guard = self.write().map_or_else(|e| e.into_inner(), identity);
+        SpecGuard(Some(guard))
     }
 }
 
@@ -251,26 +356,33 @@ impl<T: DerefMut<Target = Specification>> Deref for SpecGuard<T> {
     type Target = Specification;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        self.0
+            .as_ref()
+            .expect("This is only an option to drop it earlier in the destructor")
     }
 }
 
 impl<T: DerefMut<Target = Specification>> DerefMut for SpecGuard<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        self.0
+            .as_mut()
+            .expect("This is only an option to drop it earlier in the destructor")
     }
 }
 
 impl<T: DerefMut<Target = Specification>> Drop for SpecGuard<T> {
     fn drop(&mut self) {
-        write_decl(&self.0);
+        //Janky af
+        drop(self.0.take());
+        write_decl();
     }
 }
 
-fn write_decl(spec: &Specification) {
+fn write_decl() {
     if is_io_allowed() {
+        let spec = SPEC.read().map_or_else(PoisonError::into_inner, identity);
         let file = decl_file();
-        let _ = serde_json::to_writer_pretty(file, spec).expect("foo");
+        let _ = serde_json::to_writer_pretty(file, &*spec).expect("foo");
     }
 }
 fn is_io_allowed() -> bool {
@@ -326,4 +438,26 @@ where
     ) -> impl Iterator<Item = Result<R, syn::Error>> {
         self.into_iter().map(|(.., v)| v).map(map)
     }
+}
+
+fn get_attr_once<'a>(
+    name: &str,
+    attrs: &'a Vec<syn::Attribute>,
+) -> Result<Option<&'a syn::Attribute>, syn::Error> {
+    Ok(attrs
+        .iter()
+        .filter(|attr| {
+            match attr
+                .path()
+                .require_ident()
+                .ok()
+                .map(|i| i.to_string())
+                .as_ref()
+                .map(|s| s.as_str())
+            {
+                Some(cur) => cur == name,
+                _ => false,
+            }
+        })
+        .nth(0))
 }

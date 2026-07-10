@@ -5,6 +5,18 @@ use quote::ToTokens;
 use super::*;
 use crate::{Reparse, ResultIterator};
 
+pub fn schema_macro_impl(input: TokenStream) -> Result<TokenStream, syn::Error> {
+    let input: syn::DeriveInput = syn::parse(input)?;
+    let ident = &input.ident;
+
+    declare_schema(&input)?;
+
+    Ok(quote::quote! {
+        impl ::resty::__private::Schema for #ident{}
+    }
+    .into())
+}
+
 argue!(
     SchemaArgument {
         Description: syn::LitStr,
@@ -12,7 +24,7 @@ argue!(
         Type: syn::LitStr,
     };
     PropertyArgument {
-        Example: syn::Expr,
+        Example: syn::Lit,
         Format: syn::LitStr,
         Ref: syn::Ident,
         Description: syn::LitStr,
@@ -24,35 +36,16 @@ argue!(
     };
 );
 
-fn get_attr_once(attrs: &mut Vec<syn::Attribute>) -> Result<Option<&syn::Attribute>, syn::Error> {
-    Ok(attrs
-        .iter()
-        .filter(|attr| {
-            match attr
-                .path()
-                .require_ident()
-                .ok()
-                .map(|i| i.to_string())
-                .as_ref()
-                .map(|s| s.as_str())
-            {
-                Some("schema") => true,
-                _ => false,
-            }
-        })
-        .nth(0))
-}
-
-pub fn schema_macro_impl(input: TokenStream) -> Result<TokenStream, syn::Error> {
+fn declare_schema(input: &syn::DeriveInput) -> Result<(), syn::Error> {
     use SchemaArgument::*;
-
-    let mut input: syn::DeriveInput = syn::parse(input)?;
     let ident = &input.ident;
     let mut name_ident = &input.ident;
 
-    let schema = match input.data {
-        syn::Data::Struct(data_struct) => EnumOrStruct::Struct(declare_struct_schema(data_struct)?),
-        syn::Data::Enum(data_enum) => EnumOrStruct::Enum(declare_enum_schema(data_enum)?),
+    let schema = match &input.data {
+        syn::Data::Struct(data_struct) => {
+            EnumOrStruct::Struct(declare_struct_schema(&data_struct)?)
+        }
+        syn::Data::Enum(data_enum) => EnumOrStruct::Enum(declare_enum_schema(&data_enum)?),
         syn::Data::Union(data_union) => {
             return Err(syn::Error::new_spanned(
                 data_union.union_token,
@@ -61,7 +54,7 @@ pub fn schema_macro_impl(input: TokenStream) -> Result<TokenStream, syn::Error> 
         }
     };
 
-    let args: Option<ArgumentList<SchemaArgument>> = get_attr_once(&mut input.attrs)?
+    let args: Option<ArgumentList<SchemaArgument>> = get_helper_attr(&input.attrs)?
         .map(|attr| &attr.meta)
         .map(|meta| meta.require_list().cloned())
         .map_or(Ok(None), |meta| meta.map(Some))?
@@ -92,29 +85,26 @@ pub fn schema_macro_impl(input: TokenStream) -> Result<TokenStream, syn::Error> 
     };
 
     let mut spec = SPEC.get();
-    if spec.components.schemas.insert(name, schema).is_some() {
-        // return Err(syn::Error::new_spanned(name_ident, "duplicate schema name"));
-    }
+    if spec.components.schemas.insert(name, schema).is_some() && is_io_allowed() {
+        return Err(syn::Error::new_spanned(name_ident, "duplicate schema name"));
+    };
 
-    Ok(quote::quote! {
-        impl ::resty::__private::Schema for #ident{}
-    }
-    .into())
+    Ok(())
 }
 
-fn declare_enum_schema(mut data_enum: syn::DataEnum) -> Result<SpecEnum, syn::Error> {
+fn declare_enum_schema(data_enum: &syn::DataEnum) -> Result<SpecEnum, syn::Error> {
     use VariantArgument::*;
 
     let mut example = None;
 
     let variants = data_enum
         .variants
-        .iter_mut()
+        .iter()
         .map(|variant| {
             //todo: this can def be better
             let default = lowercase_first_letter(&variant.ident.to_string());
 
-            let Some(attr) = get_attr_once(&mut variant.attrs)? else {
+            let Some(attr) = get_helper_attr(&variant.attrs)? else {
                 return Ok(default);
             };
 
@@ -149,14 +139,14 @@ fn lowercase_first_letter(str: &str) -> String {
     }
 }
 
-fn declare_struct_schema(mut data_struct: syn::DataStruct) -> Result<SpecStruct, syn::Error> {
+fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<SpecStruct, syn::Error> {
     use PropertyArgument::*;
 
     let mut required = Vec::new();
 
     let properties = data_struct
         .fields
-        .iter_mut()
+        .iter()
         .enumerate()
         .map(|(i, field)| -> Result<(String, Property), syn::Error> {
             let key = field
@@ -165,7 +155,7 @@ fn declare_struct_schema(mut data_struct: syn::DataStruct) -> Result<SpecStruct,
                 .map(|ident| ident.to_string())
                 .unwrap_or_else(|| i.to_string());
 
-            let args: Option<ArgumentList<PropertyArgument>> = get_attr_once(&mut field.attrs)?
+            let args: Option<ArgumentList<PropertyArgument>> = get_helper_attr(&field.attrs)?
                 .map(|attr| &attr.meta)
                 .map(|meta| meta.require_list().cloned())
                 .map_or(Ok(None), |meta| meta.map(Some))?
@@ -185,7 +175,10 @@ fn declare_struct_schema(mut data_struct: syn::DataStruct) -> Result<SpecStruct,
                 .map(|args| argue!(args may have Example))
                 .map_or(Ok(None), |meta| meta.map(Some))?
                 .and_then(identity)
-                .map(|(.., example)| example.to_token_stream().to_string());
+                .map(|(.., example)| match example {
+                    syn::Lit::Str(lit_str) => lit_str.value(),
+                    rest => rest.to_token_stream().to_string(),
+                });
 
             let format = args
                 .as_ref()
@@ -232,7 +225,7 @@ fn declare_struct_schema(mut data_struct: syn::DataStruct) -> Result<SpecStruct,
         })
         .ok()?
         .into_iter()
-        .fold(HashMap::new(), |mut map, (k, v)| {
+        .fold(BTreeMap::new(), |mut map, (k, v)| {
             map.insert(k, v);
             map
         });
@@ -336,4 +329,8 @@ fn get_ty_ident(ty: &syn::Type) -> Result<(PropertyType, InferedPropertyMeta), s
         stringify!(bool) => Ok((PropertyType::Type("boolean".to_string()), NO_INFERED_META)),
         ty_ident => Ok((PropertyType::Ref(ty_ident.to_string()), NO_INFERED_META)),
     }
+}
+
+fn get_helper_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<&syn::Attribute>, syn::Error> {
+    get_attr_once("schema", attrs)
 }

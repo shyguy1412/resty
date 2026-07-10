@@ -1,44 +1,14 @@
-use std::collections::HashMap;
+use std::{
+    collections::{BTreeMap, HashMap},
+    hash::Hash,
+};
 
 use proc_macro::TokenStream;
 use proc_macro_argue::{ArgumentList, argue};
 use serde::Serialize;
 use syn::{MetaList, ext::IdentExt};
 
-#[derive(Serialize)]
-pub struct Path {
-    #[serde(flatten)]
-    path: HashMap<String, Method>,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Method {
-    tags: Vec<String>,
-    summary: Option<String>,
-    description: Option<String>,
-    operation_id: String,
-    parameters: Vec<Parameter>,
-    responses: Vec<Response>,
-    security: Vec<Security>,
-}
-
-#[derive(Serialize)]
-pub struct Parameter {
-    name: String,
-    #[serde(rename = "in")]
-    is_in: String,
-    description: Option<String>,
-    required: bool,
-    explode: bool,
-    schema: String,
-}
-
-#[derive(Serialize)]
-pub struct Response {}
-
-#[derive(Serialize)]
-pub struct Security {}
+use crate::spec::{self, SPEC, Spec};
 
 argue! {
     MetaArgument {
@@ -128,6 +98,27 @@ pub fn add_path(
         .unwrap_or(proc_macro2::TokenStream::new());
 
     let meta: ArgumentList<MetaArgument> = syn::parse2(meta_arg)?;
+
+    let mut spec = SPEC.get();
+    let path = spec
+        .paths
+        .entry("/pet".to_string())
+        .or_insert_with(|| super::Path {
+            methods: BTreeMap::new(),
+        });
+
+    path.methods.insert(
+        "get".to_string(),
+        super::Method {
+            tags: vec!["pet".to_string()],
+            summary: None,
+            description: None,
+            operation_id: "".to_string(),
+            parameters: vec![],
+            responses: vec![super::ResponseType::Ref("Pet".to_string(), "".to_string())],
+            security: vec![],
+        },
+    );
 
     Ok(())
 }

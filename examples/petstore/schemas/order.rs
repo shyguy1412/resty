@@ -16,14 +16,14 @@ pub struct Order {
     #[schema(Format("date-time"))]
     ship_date: String,
 
-    #[schema(Ref(OrderStatus), Description("Order Status"), Example("approved"))]
+    #[schema(Ref(OrderStatus))]
     status: Status,
 
     complete: bool,
 }
 
 #[derive(Deserialize, Serialize, Schema)]
-#[schema(Name(OrderStatus), Type("string"))]
+#[schema(Name(OrderStatus), Type("string"), Description("Order Status"))]
 enum Status {
     #[schema(Repr(placed))]
     OrderPlaced,
