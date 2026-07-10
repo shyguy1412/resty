@@ -1,69 +1,81 @@
 #![cfg(feature = "http_error")]
 
-use resty_macros::{error_code_to_const, error_code_to_ident, error_code_to_struct};
-
 const NO_HEADERS: &'static [(&'static str, &'static str)] = &[];
 
 macro_rules! http_error {
-    ($($code:literal => $reason:literal),*$(,)?) => ($(
-        error_code_to_struct!($code);
-        error_code_to_const!($code);
+    ($($ident:ident => $reason:literal),*$(,)?) => ($(
+        #[allow(non_upper_case_globals)]
+        pub const $ident: crate::NoBody<$ident::$ident> = crate::NoBody($ident::$ident);
 
-        impl crate::RestResponse<crate::NoBody<error_code_to_ident!($code)>>
-            for error_code_to_ident!($code)
-        {
-            const CODE: u16 = $code;
-            const REASON: &'static str = $reason;
-            const HEADERS: &'static [(&'static str, &'static str)] = NO_HEADERS;
+        #[allow(non_snake_case)]
+        mod $ident {
+            pub struct $ident;
+            impl crate::RestResponse<crate::NoBody<$ident>> for $ident
+            {
+                const CODE: u16 = super::code_from_ident(stringify!($ident));
+                const REASON: &'static str = $reason;
+                const HEADERS: &'static [(&'static str, &'static str)] = super::NO_HEADERS;
+            }
         }
 
     )*)
 }
 
+const fn code_from_ident(str: &str) -> u16 {
+    let digit_1 = str.as_bytes()[str.len() - 3];
+    let digit_2 = str.as_bytes()[str.len() - 2];
+    let digit_3 = str.as_bytes()[str.len() - 1];
+    let code = &[digit_1, digit_2, digit_3];
+    match u16::from_str_radix(unsafe { str::from_utf8_unchecked(code) }, 10) {
+        Ok(v) => v,
+        Err(_) => 0,
+    }
+}
+
 http_error! {
-    400 => "Bad Request",
-    401 => "Unauthorized",
-    402 => "Payment Required",
-    403 => "Forbidden",
-    404 => "Not Found",
-    405 => "Method Not Allowed",
-    406 => "Not Acceptable",
-    407 => "Proxy Authentication Required",
-    408 => "Request Timeout",
-    409 => "Conflict",
-    410 => "Gone",
-    411 => "Length Required",
-    412 => "Precondition Failed",
-    413 => "Payload Too Large",
-    414 => "URI Too Long",
-    415 => "Unsupported Media Type",
-    416 => "Range Not Satisfiable",
-    417 => "Expectation Failed",
-    421 => "Misdirected Request",
-    422 => "Unprocessable Entity",
-    423 => "Locked",
-    424 => "Failed Dependency",
-    425 => "Too Early",
-    426 => "Upgrade Required",
-    428 => "Precondition Required",
-    429 => "Too Many Requests",
-    431 => "Request Header Fields Too Large",
-    451 => "Unavailable For Legal Reasons",
-    418 => "I'm a teapot",
-    420 => "Policy Not Fulfilled",
-    444 => "No Response",
-    449 => "The request should be retried after doing the appropriate action",
-    499 => "Client Closed Request",
-    500 => "Internal Server Error",
-    501 => "Not Implemented",
-    502 => "Bad Gateway",
-    503 => "Service Unavailable",
-    504 => "Gateway Timeout",
-    505 => "HTTP Version not supported",
-    506 => "Variant Also Negotiates",
-    507 => "Insufficient Storage",
-    508 => "Loop Detected",
-    509 => "Bandwidth Limit Exceeded",
-    510 => "Not Extended",
-    511 => "Network Authentication Required"
+    HttpError400 => "Bad Request",
+    HttpError401 => "Unauthorized",
+    HttpError402 => "Payment Required",
+    HttpError403 => "Forbidden",
+    HttpError404 => "Not Found",
+    HttpError405 => "Method Not Allowed",
+    HttpError406 => "Not Acceptable",
+    HttpError407 => "Proxy Authentication Required",
+    HttpError408 => "Request Timeout",
+    HttpError409 => "Conflict",
+    HttpError410 => "Gone",
+    HttpError411 => "Length Required",
+    HttpError412 => "Precondition Failed",
+    HttpError413 => "Payload Too Large",
+    HttpError414 => "URI Too Long",
+    HttpError415 => "Unsupported Media Type",
+    HttpError416 => "Range Not Satisfiable",
+    HttpError417 => "Expectation Failed",
+    HttpError421 => "Misdirected Request",
+    HttpError422 => "Unprocessable Entity",
+    HttpError423 => "Locked",
+    HttpError424 => "Failed Dependency",
+    HttpError425 => "Too Early",
+    HttpError426 => "Upgrade Required",
+    HttpError428 => "Precondition Required",
+    HttpError429 => "Too Many Requests",
+    HttpError431 => "Request Header Fields Too Large",
+    HttpError451 => "Unavailable For Legal Reasons",
+    HttpError418 => "I'm a teapot",
+    HttpError420 => "Policy Not Fulfilled",
+    HttpError444 => "No Response",
+    HttpError449 => "The request should be retried after doing the appropriate action",
+    HttpError499 => "Client Closed Request",
+    HttpError500 => "Internal Server Error",
+    HttpError501 => "Not Implemented",
+    HttpError502 => "Bad Gateway",
+    HttpError503 => "Service Unavailable",
+    HttpError504 => "Gateway Timeout",
+    HttpError505 => "HTTP Version not supported",
+    HttpError506 => "Variant Also Negotiates",
+    HttpError507 => "Insufficient Storage",
+    HttpError508 => "Loop Detected",
+    HttpError509 => "Bandwidth Limit Exceeded",
+    HttpError510 => "Not Extended",
+    HttpError511 => "Network Authentication Required"
 }

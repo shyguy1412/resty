@@ -7,7 +7,7 @@ use crate::{endpoint::HandlerArgument::Method, spec::add_path, *};
 
 argue! {
     pub HandlerArgument {
-        Method: ArgumentList<syn::Ident>,
+        Method: syn::Ident,
         Router: syn::Path,
         Route: syn::LitStr,
         Header: HeaderArgument,
@@ -113,8 +113,7 @@ fn endpoint_variant(
     fn_ident: &syn::Ident,
 ) -> Result<proc_macro2::TokenStream, syn::Error> {
     use HandlerArgument::*;
-    let method_arg = argue!(args must have Method)?;
-    let methods = method_arg.1.iter();
+    let methods = argue!(args may repeat Method).map(|(.., method)| method);
 
     Ok(quote::quote! {::resty::Handler(&#fn_ident, {
         use ::resty::HttpMethod::*;
@@ -134,59 +133,4 @@ fn middleware_variant(
     }
 
     Ok(quote::quote! {::resty::Middleware(&#fn_ident)})
-}
-
-#[allow(unused)]
-fn validate_handler(mut handler: syn::ItemFn) -> Result<syn::ItemFn, syn::Error> {
-    let handler_ident = &handler.sig.ident;
-    let args: Vec<_> = handler
-        .sig
-        .inputs
-        .iter()
-        .map(|arg| arg.reparse::<syn::PatType>())
-        .ok()?;
-
-    let Some((req, res)) = args.get(0).zip(args.get(1)) else {
-        return Err(syn::Error::new_spanned(
-            handler.sig.clone(),
-            "Expected Request and Response arguments",
-        ));
-    };
-
-    let req_ident: syn::Ident = req.pat.reparse()?;
-    let req_ty: syn::TypeReference = req.ty.reparse()?;
-    let mut req_ty: syn::TypePath = req_ty.elem.reparse()?;
-    req_ty
-        .path
-        .segments
-        .last_mut()
-        .map(|seg| seg.arguments = syn::PathArguments::None);
-
-    let res_ident: syn::Ident = res.pat.reparse()?;
-    let res_ty: syn::TypeReference = res.ty.reparse()?;
-    let mut res_ty: syn::TypePath = res_ty.elem.reparse()?;
-    res_ty
-        .path
-        .segments
-        .last_mut()
-        .map(|seg| seg.arguments = syn::PathArguments::None);
-
-    let statements = &handler.block.stmts;
-    let span = handler.block.span();
-
-    let block: syn::Block = syn::parse(
-        quote::quote_spanned! {span => {
-            {
-                let __typecheck_handler = async ||{let _: ::resty::Result = #handler_ident(#req_ident, #res_ident).await;};
-                let __typecheck_request: &mut ::resty::Request = #req_ident;
-                let __typecheck_response: &mut ::resty::Response = #res_ident;
-            }
-            #(#statements)*
-        }}
-        .into(),
-    )?;
-
-    handler.block = Box::new(block);
-
-    Ok(handler)
 }

@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, convert::identity, thread::scope};
+use std::{collections::BTreeMap, convert::identity};
 
 use proc_macro::TokenStream;
 use proc_macro_argue::{ArgumentList, ParseArgument, argue};
@@ -63,10 +63,8 @@ pub fn add_path(
         .map_or_else(routing::default_route, Ok)?
         .join("/");
 
-    let methods = argue!(args must have Method)?
-        .1
-        .iter()
-        .map(|m| m.to_string().to_ascii_lowercase())
+    let methods = argue!(args may repeat Method)
+        .map(|(.., m)| m.to_string().to_ascii_lowercase())
         .collect::<Vec<_>>();
 
     let Some(meta) = argue!(args may have Meta)?
@@ -83,6 +81,7 @@ pub fn add_path(
     let responses = argue!(meta may repeat Response)
         .parse_iter(parse_response)
         .ok()?;
+
     let security = argue!(meta may repeat Security)
         .parse_iter(parse_security)
         .ok()?
