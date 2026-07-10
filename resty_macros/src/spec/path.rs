@@ -1,18 +1,17 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    hash::Hash,
-};
+use std::{collections::BTreeMap, convert::identity, fmt::format};
 
 use proc_macro::TokenStream;
-use proc_macro_argue::{ArgumentList, argue};
-use serde::Serialize;
-use syn::{MetaList, ext::IdentExt};
+use proc_macro_argue::{ArgumentList, ParseArgument, argue};
 
-use crate::spec::{self, SPEC, Spec};
+use crate::{
+    Reparse, ResultIterator,
+    endpoint::{HandlerArgument, parse_route},
+    routing,
+    spec::{RequestBody, SPEC, Spec, lit_value},
+};
 
 argue! {
     MetaArgument {
-        Method: syn::Ident,
         Tag: syn::LitStr,
         Summary: syn::LitStr,
         Description: syn::LitStr,
@@ -55,70 +54,112 @@ pub fn add_path(
                        // route: &Vec<String>,
                        // method: &ArgumentList<syn::Expr>,
 ) -> Result<(), syn::Error> {
-    let args: ArgumentList<syn::Meta> = syn::parse(args)?;
-    let method_arg = args
-        .iter()
-        .filter_map(|arg| match arg {
-            syn::Meta::List(meta_list) => Some(meta_list),
-            _ => None,
-        })
-        .find_map(|list| {
-            match list
-                .path
-                .get_ident()
-                .map(ToString::to_string)
-                .as_ref()
-                .map(String::as_str)
-            {
-                Some("Method") => Some(list.tokens.clone()),
-                _ => None,
-            }
-        })
-        .unwrap_or(proc_macro2::TokenStream::new());
-    let methods: ArgumentList<syn::Ident> = syn::parse2(method_arg)?;
+    use crate::endpoint::HandlerArgument::*;
+    use MetaArgument::*;
+    let args: ArgumentList<HandlerArgument> = syn::parse(args)?;
 
-    let meta_arg = args
-        .iter()
-        .filter_map(|arg| match arg {
-            syn::Meta::List(meta_list) => Some(meta_list),
-            _ => None,
-        })
-        .find_map(|list| {
-            match list
-                .path
-                .get_ident()
-                .map(ToString::to_string)
-                .as_ref()
-                .map(String::as_str)
-            {
-                Some("Meta") => Some(list.tokens.clone()),
-                _ => None,
-            }
-        })
-        .unwrap_or(proc_macro2::TokenStream::new());
+    let route = argue!(args may have Route)?
+        .parse(parse_route)?
+        .map_or_else(routing::default_route, Ok)?
+        .join("/");
 
-    let meta: ArgumentList<MetaArgument> = syn::parse2(meta_arg)?;
+    let methods = argue!(args must have Method)?
+        .1
+        .iter()
+        .map(|m| m.to_string().to_ascii_lowercase())
+        .collect::<Vec<_>>();
+
+    let Some(meta) = argue!(args may have Meta)?
+        .map(|m| m.1.reparse::<ArgumentList<MetaArgument>>())
+        .map(|r| r.map(Some))
+        .map_or(Ok(None), identity)?
+    else {
+        return Ok(());
+    };
+
+    let tags = argue!(meta may repeat Tag).parse_iter(lit_value).ok()?;
+    let summary = argue!(meta may have Summary)?.parse(lit_value)?;
+    let description = argue!(meta may have Description)?.parse(lit_value)?;
+    let responses = argue!(meta may repeat Response)
+        .parse_iter(parse_response)
+        .ok()?;
+    let security = argue!(meta may have Security)?.parse(parse_security)?;
+    let request_body = argue!(meta may have Request)?.parse(parse_request_body)?;
 
     let mut spec = SPEC.get();
     let path = spec
         .paths
-        .entry("/pet".to_string())
+        .entry(format!("/{route}"))
         .or_insert_with(|| super::Path {
             methods: BTreeMap::new(),
         });
 
-    path.methods.insert(
-        "get".to_string(),
-        super::Method {
-            tags: vec!["pet".to_string()],
-            summary: None,
-            description: None,
-            operation_id: "".to_string(),
-            parameters: vec![],
-            responses: vec![super::ResponseType::Ref("Pet".to_string(), "".to_string())],
-            security: vec![],
-        },
-    );
+    for method in methods {
+        path.methods.insert(
+            method.clone(),
+            super::Method {
+                tags: tags.clone(),
+                summary: summary.clone(),
+                description: description.clone(),
+                request_body: request_body.clone(),
+                operation_id: format!("{method}{}", route.replace("/", "_")),
+                parameters: vec![],
+                responses: responses.clone(),
+                security: vec![],
+            },
+        );
+    }
 
+    Ok(())
+}
+
+fn parse_response(arg: &ResponseArgument) -> Result<super::ResponseType, syn::Error> {
+    let ResponseArgument(ty, _, desc) = arg;
+
+    let r = match ty {
+        ResponseType::Path(path) => super::ResponseType::Ref(
+            path.segments
+                .last()
+                .ok_or(syn::Error::new_spanned(path, "Can not parse path"))?
+                .ident
+                .to_string(),
+            desc.value(),
+        ),
+        ResponseType::Code(lit_int) => {
+            super::ResponseType::Raw(lit_int.base10_digits().to_string(), desc.value())
+        }
+    };
+
+    Ok(r)
+}
+
+fn parse_request_body(arg: &ArgumentList<RequestArgument>) -> Result<RequestBody, syn::Error> {
+    use RequestArgument::*;
+
+    let description = argue!(arg may have Description)?.parse(lit_value)?;
+    let required = argue!(arg may have Required)?.is_some();
+    let content = argue!(arg may repeat Schema)
+        .parse_iter(parse_request_schema)
+        .ok()?;
+
+    Ok(super::RequestBody {
+        content: content.into_iter().collect(),
+        description,
+        required,
+    })
+}
+
+fn parse_request_schema(arg: &SchemaArgument) -> Result<(String, super::SchemaRef), syn::Error> {
+    let SchemaArgument(content_type, _, schema) = arg;
+
+    Ok((
+        content_type.value(),
+        super::SchemaRef {
+            schema: super::PropertyType::Ref(schema.to_string()),
+        },
+    ))
+}
+
+fn parse_security(arg: &ArgumentList<SecurityArgument>) -> Result<(), syn::Error> {
     Ok(())
 }

@@ -1,11 +1,8 @@
-use std::collections::HashMap;
-
 use proc_macro::TokenStream;
-use proc_macro_argue::{ArgumentList, Expect, argue};
-use proc_macro2::Spacing::Alone;
+use proc_macro_argue::{ArgumentList, argue};
 use quote::ToTokens;
 
-use crate::spec::{SPEC, Spec, get_attr_once, is_io_allowed};
+use crate::spec::{SPEC, Spec, get_attr_once};
 
 argue! {
     ResponseArgument {
@@ -75,7 +72,7 @@ fn declare_response(ident: &syn::Ident, input: proc_macro2::TokenStream) -> Resu
             .map(|content_type| {
                 (
                     content_type.value(),
-                    super::ResponseBody {
+                    super::SchemaRef {
                         schema: super::PropertyType::Ref(ident.to_string()),
                     },
                 )

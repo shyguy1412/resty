@@ -15,7 +15,7 @@ pub use response::response_macro_impl;
 pub use schema::schema_macro_impl;
 
 use std::{
-    collections::{BTreeMap},
+    collections::BTreeMap,
     convert::identity,
     hash::Hash,
     ops::{Deref, DerefMut},
@@ -250,12 +250,21 @@ pub struct Method {
     description: Option<String>,
     operation_id: String,
     parameters: Vec<Parameter>,
+    request_body: Option<RequestBody>,
     #[serde(serialize_with = "response_type")]
     responses: Vec<ResponseType>,
     security: Vec<Security>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
+pub struct RequestBody {
+    description: Option<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    content: BTreeMap<String, SchemaRef>,
+    required: bool,
+}
+
+#[derive(Serialize, Clone)]
 enum ResponseType {
     //code, description
     Raw(String, String),
@@ -280,11 +289,11 @@ pub struct Response {
     code: String,
     description: String,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    content: BTreeMap<String, ResponseBody>,
+    content: BTreeMap<String, SchemaRef>,
 }
 
 #[derive(Serialize, Clone)]
-struct ResponseBody {
+struct SchemaRef {
     schema: PropertyType,
 }
 
@@ -402,44 +411,6 @@ fn decl_file() -> std::fs::File {
         .expect("Can not open declaration file")
 }
 
-trait ParseArgument<'a> {
-    type Arg;
-
-    fn parse_iter<R: 'a>(
-        self,
-        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
-    ) -> impl Iterator<Item = Result<R, syn::Error>>;
-
-    fn parse<R: 'a>(
-        self,
-        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
-    ) -> Result<Option<R>, syn::Error>;
-}
-
-impl<'a, I: 'a, T: 'a> ParseArgument<'a> for I
-where
-    I: IntoIterator<Item = (&'a syn::Ident, &'a T)>,
-{
-    type Arg = T;
-
-    fn parse<R: 'a>(
-        self,
-        map: fn(arg: &T) -> Result<R, syn::Error>,
-    ) -> Result<Option<R>, syn::Error> {
-        self.parse_iter(map)
-            .nth(0)
-            .map(|r| r.map(Some))
-            .map_or(Ok(None), identity)
-    }
-
-    fn parse_iter<R: 'a>(
-        self,
-        map: fn(arg: &Self::Arg) -> Result<R, syn::Error>,
-    ) -> impl Iterator<Item = Result<R, syn::Error>> {
-        self.into_iter().map(|(.., v)| v).map(map)
-    }
-}
-
 fn get_attr_once<'a>(
     name: &str,
     attrs: &'a Vec<syn::Attribute>,
@@ -460,4 +431,8 @@ fn get_attr_once<'a>(
             }
         })
         .nth(0))
+}
+
+fn lit_value(lit: &syn::LitStr) -> Result<String, syn::Error> {
+    Ok(lit.value())
 }

@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
-use proc_macro_argue::{ArgumentList, argue};
+use proc_macro_argue::{ArgumentList, ParseArgument, argue};
 
 use crate::{
     ResultIterator,
-    spec::{ParseArgument, SPEC, Spec, is_io_allowed},
+    spec::{SPEC, Spec, is_io_allowed, lit_value},
 };
 
 argue! {
@@ -89,10 +89,6 @@ pub fn apply_meta(
         .unwrap_or_default();
 
     Ok(())
-}
-
-fn lit_value(lit: &syn::LitStr) -> Result<String, syn::Error> {
-    Ok(lit.value())
 }
 
 fn security_schemes(

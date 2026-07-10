@@ -1,12 +1,12 @@
 use proc_macro::TokenStream;
-use proc_macro_argue::{ArgumentList, argue};
+use proc_macro_argue::{ArgumentList, ParseArgument, argue};
 use quote::{ToTokens, format_ident};
 use syn::spanned::Spanned;
 
 use crate::{endpoint::HandlerArgument::Method, spec::add_path, *};
 
 argue! {
-    HandlerArgument {
+    pub HandlerArgument {
         Method: ArgumentList<syn::Ident>,
         Router: syn::Path,
         Route: syn::LitStr,
@@ -14,7 +14,7 @@ argue! {
 
         Meta: ArgumentList<syn::MetaList>,
     };
-    HeaderArgument(syn::LitStr, syn::token::Comma, syn::LitStr);
+    pub HeaderArgument(syn::LitStr, syn::token::Comma, syn::LitStr);
 }
 
 impl ToTokens for HeaderArgument {
@@ -39,6 +39,24 @@ pub fn middleware_macro_impl(
     handler_impl(args, body, middleware_variant)
 }
 
+pub fn parse_router(router: &syn::Path) -> Result<syn::Path, syn::Error> {
+    let ident = router
+        .segments
+        .last()
+        .ok_or(syn::Error::new_spanned(router, "Can not get path segment"))?;
+
+    Ok(syn::parse_quote_spanned! {router.span() => #router::#ident})
+}
+
+pub fn parse_route(route: &syn::LitStr) -> Result<Vec<String>, syn::Error> {
+    Ok(route
+        .value()
+        .trim_matches('/')
+        .split("/")
+        .map(ToString::to_string)
+        .collect::<Vec<_>>())
+}
+
 fn handler_impl(
     args: TokenStream,
     body: TokenStream,
@@ -55,14 +73,7 @@ fn handler_impl(
 
     let args: ArgumentList<HandlerArgument> = syn::parse(args)?;
     let router = argue!(args may have Router)?
-        .map(|(.., value)| value.clone())
-        //transform module path to macro path
-        .map(|mut router| {
-            router
-                .segments
-                .push(router.segments.last().cloned().unwrap());
-            router
-        })
+        .parse(parse_router)?
         .map_or_else(routing::default_router, Ok)?;
 
     let headers: Vec<_> = argue!(args may repeat Header)
@@ -70,11 +81,7 @@ fn handler_impl(
         .collect();
 
     let route = argue!(args may have Route)?
-        .map(|(.., value)| value.value())
-        .as_ref()
-        .map(|v| v.strip_prefix("/").unwrap_or(v))
-        .map(|v| v.strip_suffix("/").unwrap_or(v))
-        .map(|v| v.split("/").map(ToString::to_string).collect())
+        .parse(parse_route)?
         .map_or_else(routing::default_route, Ok)?;
 
     let variant = variant(&args, fn_ident)?;
