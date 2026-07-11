@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use proc_macro::TokenStream;
 use proc_macro_argue::{ArgumentList, argue};
 use quote::ToTokens;
@@ -62,39 +64,15 @@ fn declare_response(ident: &syn::Ident, input: proc_macro2::TokenStream) -> Resu
     use ResponseArgument::*;
     let meta_list: syn::MetaList = syn::parse2(input)?;
     let args: ArgumentList<ResponseArgument> = syn::parse2(meta_list.tokens)?;
-    let content_types = argue!(args may repeat ContentType)
-        .map(|(.., p)| p.value())
-        .map(|content_type| {
-            (
-                content_type,
-                Content {
-                    schema: super::OrRef::Ref(super::ReferenceObject {
-                        component: ComponentType::Schema,
-                        name: ident.to_string(),
-                    }),
-                },
-            )
-        });
 
-    let content_types_array = argue!(args may repeat ContentType)
-        .map(|(.., p)| p.value())
-        .map(|content_type| {
+    let (content, content_array) = argue!(args may repeat ContentType)
+        .map(|(.., content_type)| {
             (
-                content_type,
-                Content {
-                    schema: super::OrRef::Val(super::Schema {
-                        description: None,
-                        example: None,
-                        ty: super::SchemaType::Array(super::ArraySchema {
-                            items: Box::new(super::OrRef::Ref(super::ReferenceObject {
-                                component: ComponentType::Schema,
-                                name: ident.to_string(),
-                            })),
-                        }),
-                    }),
-                },
+                content_kv_pair(ident, content_type.value()),
+                array_content_kv_pair(ident, content_type.value()),
             )
-        });
+        })
+        .collect::<(BTreeMap<_, _>, BTreeMap<_, _>)>();
 
     let name = argue!(args may have Schema)?
         .map(|(.., n)| n.value())
@@ -103,13 +81,14 @@ fn declare_response(ident: &syn::Ident, input: proc_macro2::TokenStream) -> Resu
     let description = argue!(args must have Description)?.1.value();
 
     let response = super::Response {
-        content: content_types.collect(),
+        content,
         description: description.clone(),
     };
     let response_array = super::Response {
-        content: content_types_array.collect(),
+        content: content_array,
         description: description.clone(),
     };
+
     let mut spec = SPEC.get();
     spec.components
         .responses
@@ -121,4 +100,29 @@ fn declare_response(ident: &syn::Ident, input: proc_macro2::TokenStream) -> Resu
 
 fn get_helper_attr(attrs: &Vec<syn::Attribute>) -> Result<Option<&syn::Attribute>, syn::Error> {
     get_attr_once("response", attrs)
+}
+
+fn content_kv_pair(ident: &syn::Ident, content_type: String) -> (String, Content) {
+    let schema = super::OrRef::Ref(super::ReferenceObject {
+        component: ComponentType::Schema,
+        name: ident.to_string(),
+    });
+    (content_type, Content { schema })
+}
+
+fn array_content_kv_pair(ident: &syn::Ident, content_type: String) -> (String, Content) {
+    let array_schema = super::ArraySchema {
+        items: Box::new(super::OrRef::Ref(super::ReferenceObject {
+            component: ComponentType::Schema,
+            name: ident.to_string(),
+        })),
+    };
+    let schema_type = super::SchemaType::Array(array_schema);
+    let schema = super::OrRef::Val(super::Schema {
+        description: None,
+        example: None,
+        ty: schema_type,
+    });
+
+    (content_type, Content { schema })
 }
