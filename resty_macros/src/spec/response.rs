@@ -4,7 +4,7 @@ use quote::ToTokens;
 
 use crate::spec::{
     SPEC, Spec,
-    definition::{ComponentType, ContentReference},
+    definition::{ComponentType, Content},
     get_attr_once,
 };
 
@@ -67,11 +67,31 @@ fn declare_response(ident: &syn::Ident, input: proc_macro2::TokenStream) -> Resu
         .map(|content_type| {
             (
                 content_type,
-                ContentReference {
-                    schema: super::ReferenceObject {
+                Content {
+                    schema: super::OrRef::Ref(super::ReferenceObject {
                         component: ComponentType::Schema,
                         name: ident.to_string(),
-                    },
+                    }),
+                },
+            )
+        });
+
+    let content_types_array = argue!(args may repeat ContentType)
+        .map(|(.., p)| p.value())
+        .map(|content_type| {
+            (
+                content_type,
+                Content {
+                    schema: super::OrRef::Val(super::Schema {
+                        description: None,
+                        example: None,
+                        ty: super::SchemaType::Array(super::ArraySchema {
+                            items: Box::new(super::OrRef::Ref(super::ReferenceObject {
+                                component: ComponentType::Schema,
+                                name: ident.to_string(),
+                            })),
+                        }),
+                    }),
                 },
             )
         });
@@ -84,9 +104,17 @@ fn declare_response(ident: &syn::Ident, input: proc_macro2::TokenStream) -> Resu
 
     let response = super::Response {
         content: content_types.collect(),
-        description,
+        description: description.clone(),
+    };
+    let response_array = super::Response {
+        content: content_types_array.collect(),
+        description: description.clone(),
     };
     let mut spec = SPEC.get();
+    spec.components
+        .responses
+        .entry(format!("autogen__{name}Array"))
+        .or_insert(response_array);
     spec.components.responses.entry(name).or_insert(response);
     Ok(())
 }

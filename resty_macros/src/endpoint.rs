@@ -1,7 +1,7 @@
 use proc_macro::TokenStream;
 use proc_macro_argue::{ArgumentList, ParseArgument, argue};
 use quote::{ToTokens, format_ident};
-use syn::spanned::Spanned;
+use syn::{parse::discouraged::AnyDelimiter, spanned::Spanned};
 
 use crate::{endpoint::HandlerArgument::Method, spec::add_path, *};
 
@@ -39,6 +39,7 @@ argue! {
 
 pub enum ResponseType {
     Ref(syn::Ident),
+    Array(syn::Ident),
     Contentless(syn::LitStr),
 }
 
@@ -48,6 +49,9 @@ impl syn::parse::Parse for ResponseType {
         let lookahead = input.lookahead1();
         if lookahead.peek(syn::LitStr) {
             Ok(Contentless(input.parse()?))
+        } else if lookahead.peek(syn::token::Bracket) {
+            let (.., buf) = input.parse_any_delimiter()?;
+            Ok(Array(buf.parse()?))
         } else {
             Ok(Ref(input.parse()?))
         }

@@ -41,11 +41,9 @@ fn declare_schema(input: &syn::DeriveInput) -> Result<(), syn::Error> {
     let ident = &input.ident;
     let mut name_ident = &input.ident;
 
-    let schema = match &input.data {
-        syn::Data::Struct(data_struct) => {
-            EnumOrStruct::Struct(declare_struct_schema(&data_struct)?)
-        }
-        syn::Data::Enum(data_enum) => EnumOrStruct::Enum(declare_enum_schema(&data_enum)?),
+    let ty = match &input.data {
+        syn::Data::Struct(data_struct) => SchemaType::Struct(declare_struct_schema(&data_struct)?),
+        syn::Data::Enum(data_enum) => SchemaType::Enum(declare_enum_schema(&data_enum)?),
         syn::Data::Union(data_union) => {
             return Err(syn::Error::new_spanned(
                 data_union.union_token,
@@ -71,8 +69,9 @@ fn declare_schema(input: &syn::DeriveInput) -> Result<(), syn::Error> {
     let description = argue!(args may have Description)?.parse(lit_value)?;
 
     let schema: Schema = Schema {
-        schema,
+        ty,
         description,
+        example: None,
     };
 
     let mut spec = SPEC.get();
@@ -83,7 +82,7 @@ fn declare_schema(input: &syn::DeriveInput) -> Result<(), syn::Error> {
     Ok(())
 }
 
-fn declare_enum_schema(data_enum: &syn::DataEnum) -> Result<EnumSpec, syn::Error> {
+fn declare_enum_schema(data_enum: &syn::DataEnum) -> Result<EnumSchema, syn::Error> {
     use VariantArgument::*;
 
     let mut example = None;
@@ -114,7 +113,7 @@ fn declare_enum_schema(data_enum: &syn::DataEnum) -> Result<EnumSpec, syn::Error
         })
         .ok()?;
 
-    Ok(EnumSpec {
+    Ok(EnumSchema {
         //Todo: infer other types
         ty: "string".to_string(),
         variants,
@@ -130,7 +129,7 @@ fn lowercase_first_letter(str: &str) -> String {
     }
 }
 
-fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<StructSpec, syn::Error> {
+fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<StructSchema, syn::Error> {
     use PropertyArgument::*;
 
     let mut required = Vec::new();
@@ -140,7 +139,7 @@ fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<StructSpec, sy
         .iter()
         .enumerate()
         .map(
-            |(i, field)| -> Result<(String, OrRef<Property>), syn::Error> {
+            |(i, field)| -> Result<(String, OrRef<Schema>), syn::Error> {
                 let ty = match &field.ty {
                     syn::Type::Path(type_path) => type_path,
                     _ => {
@@ -204,7 +203,7 @@ fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<StructSpec, sy
 
                 Ok((
                     key,
-                    OrRef::Val(Property {
+                    OrRef::Val(Schema {
                         example,
                         description,
                         ty: property_type,
@@ -219,7 +218,7 @@ fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<StructSpec, sy
             map
         });
 
-    Ok(StructSpec {
+    Ok(StructSchema {
         properties,
         required,
     })
@@ -228,7 +227,7 @@ fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<StructSpec, sy
 fn path_to_property_type(
     path: &syn::TypePath,
     format: Option<String>,
-) -> Result<OrRef<PropertyType>, syn::Error> {
+) -> Result<OrRef<SchemaType>, syn::Error> {
     let segment = path
         .path
         .segments
@@ -248,37 +247,37 @@ fn path_to_property_type(
     .ok_or_else(|| syn::Error::new_spanned(path, "expected an inner type"));
 
     use OrRef::*;
-    use PropertyType::*;
+    use SchemaType::*;
 
     match segment.ident.to_string().as_str() {
         stringify!(Option) => path_to_property_type(inner?, format),
-        stringify!(Vec) => Ok(Val(Array {
+        stringify!(Vec) => Ok(Val(Array(ArraySchema {
             items: Box::new(path_to_property_type(inner?, format)?),
-        })),
-        stringify!(String) => Ok(Val(Primitive {
+        }))),
+        stringify!(String) => Ok(Val(Primitive(PrimitiveSchema {
             ty: "string",
             format,
-        })),
-        stringify!(i32) => Ok(Val(Primitive {
+        }))),
+        stringify!(i32) => Ok(Val(Primitive(PrimitiveSchema {
             ty: "number",
             format: Some("int23".to_string()).and(format),
-        })),
-        stringify!(i64) => Ok(Val(Primitive {
+        }))),
+        stringify!(i64) => Ok(Val(Primitive(PrimitiveSchema {
             ty: "number",
             format: Some("int64".to_string()).and(format),
-        })),
-        stringify!(f32) => Ok(Val(Primitive {
+        }))),
+        stringify!(f32) => Ok(Val(Primitive(PrimitiveSchema {
             ty: "number",
             format: Some("float".to_string()).and(format),
-        })),
-        stringify!(f64) => Ok(Val(Primitive {
+        }))),
+        stringify!(f64) => Ok(Val(Primitive(PrimitiveSchema {
             ty: "number",
             format: Some("double".to_string()).and(format),
-        })),
-        stringify!(bool) => Ok(Val(Primitive {
+        }))),
+        stringify!(bool) => Ok(Val(Primitive(PrimitiveSchema {
             ty: "boolean",
             format: format,
-        })),
+        }))),
         ty_ident => Ok(Ref(ReferenceObject {
             component: ComponentType::Schema,
             name: ty_ident.to_string(),

@@ -9,9 +9,7 @@ use crate::{
     routing,
     spec::{
         RequestBody, SPEC, Spec,
-        definition::{
-            ComponentType, ContentReference, ContentlessResponse, OrRef, ReferenceObject,
-        },
+        definition::{ComponentType, ContentReference, OrRef, ReferenceObject, Response},
         lit_value,
     },
 };
@@ -76,16 +74,19 @@ pub fn add_path(
     Ok(())
 }
 
-fn parse_response(
-    arg: &ResponseArgument,
-) -> Result<(String, OrRef<ContentlessResponse>), syn::Error> {
+fn parse_response(arg: &ResponseArgument) -> Result<(String, OrRef<Response>), syn::Error> {
     let r = match &arg.2 {
         ResponseType::Ref(ident) => OrRef::Ref(ReferenceObject {
             component: ComponentType::Response,
             name: ident.to_string(),
         }),
-        ResponseType::Contentless(lit_str) => OrRef::Val(ContentlessResponse {
+        ResponseType::Contentless(lit_str) => OrRef::Val(Response {
             description: lit_str.value(),
+            content: Default::default(),
+        }),
+        ResponseType::Array(ident) => OrRef::Ref(ReferenceObject {
+            component: ComponentType::Response,
+            name: format!("autogen__{}Array", ident.to_string()),
         }),
     };
 

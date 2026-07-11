@@ -65,9 +65,8 @@ pub struct Components {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub schemas: BTreeMap<String, Schema>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub request_bodies: BTreeMap<String, ()>,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub security_schemes: BTreeMap<String, SecurityScheme>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub responses: BTreeMap<String, Response>,
 }
 
@@ -105,16 +104,4 @@ impl Serialize for ReferenceObject {
         object.serialize_field("$ref", &format!("#/components/{}/{}", component, self.name))?;
         object.end()
     }
-}
-
-#[derive(Serialize)]
-pub struct Response {
-    pub description: String,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub content: BTreeMap<String, ContentReference>,
-}
-
-#[derive(Serialize, Clone)]
-pub struct ContentReference {
-    pub schema: ReferenceObject,
 }
