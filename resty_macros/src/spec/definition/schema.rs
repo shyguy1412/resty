@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
 
-use crate::spec::definition::ReferenceObject;
-
 use super::OrRef;
 use serde::Serialize;
 

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Schema, Response)]
 #[response(
-    Description("Operation Succesfull"),
+    Description("Operation Successfull"),
     Status(200, "OK"),
     ContentType("application/json"),
     ContentType("application/xml")

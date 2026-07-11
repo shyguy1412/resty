@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
-use serde::{Serialize, ser::SerializeMap};
+use serde::Serialize;
 
-use crate::spec::definition::{ContentReference, OrRef, ReferenceObject};
+use crate::spec::definition::{ContentReference, OrRef};
 
 #[derive(Serialize)]
 pub struct PathItem {
