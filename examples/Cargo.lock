@@ -499,7 +499,9 @@ dependencies = [
 
 [[package]]
 name = "proc_macro_argue"
-version = "0.1.1"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9aca731b82e415b1a98c6f37a571e25c6a557007040eced64d255d29bf8c9432"
 dependencies = [
  "proc-macro2",
  "syn",

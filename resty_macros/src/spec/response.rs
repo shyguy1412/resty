@@ -1,8 +1,8 @@
 use proc_macro::TokenStream;
-use proc_macro_argue::{ArgumentList, ParseArgument, argue};
+use proc_macro_argue::{ArgumentList, argue};
 use quote::ToTokens;
 
-use crate::spec::{SPEC, Spec, get_attr_once, lit_value};
+use crate::spec::{SPEC, Spec, get_attr_once};
 
 argue! {
     ResponseArgument {

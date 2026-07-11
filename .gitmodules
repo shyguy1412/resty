@@ -1,3 +1,0 @@
-[submodule "macros/argue"]
-	path = resty_macros/argue
-	url = ../proc_macro_argue
