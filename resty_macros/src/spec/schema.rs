@@ -83,7 +83,7 @@ fn declare_schema(input: &syn::DeriveInput) -> Result<(), syn::Error> {
     Ok(())
 }
 
-fn declare_enum_schema(data_enum: &syn::DataEnum) -> Result<SpecEnum, syn::Error> {
+fn declare_enum_schema(data_enum: &syn::DataEnum) -> Result<EnumSpec, syn::Error> {
     use VariantArgument::*;
 
     let mut example = None;
@@ -114,7 +114,7 @@ fn declare_enum_schema(data_enum: &syn::DataEnum) -> Result<SpecEnum, syn::Error
         })
         .ok()?;
 
-    Ok(SpecEnum {
+    Ok(EnumSpec {
         //Todo: infer other types
         ty: "string".to_string(),
         variants,
@@ -130,7 +130,7 @@ fn lowercase_first_letter(str: &str) -> String {
     }
 }
 
-fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<SpecStruct, syn::Error> {
+fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<StructSpec, syn::Error> {
     use PropertyArgument::*;
 
     let mut required = Vec::new();
@@ -139,53 +139,79 @@ fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<SpecStruct, sy
         .fields
         .iter()
         .enumerate()
-        .map(|(i, field)| -> Result<(String, Property), syn::Error> {
-            let key = field
-                .ident
-                .as_ref()
-                .map(|ident| ident.to_string())
-                .unwrap_or_else(|| i.to_string());
+        .map(
+            |(i, field)| -> Result<(String, OrRef<Property>), syn::Error> {
+                let ty = match &field.ty {
+                    syn::Type::Path(type_path) => type_path,
+                    _ => {
+                        return Err(syn::Error::new_spanned(
+                            &field.ty,
+                            "Only Path types are supported for Schemas",
+                        ));
+                    }
+                };
 
-            let args: ArgumentList<PropertyArgument> = get_helper_attr(&field.attrs)?
-                .map(|attr| &attr.meta)
-                .map(|meta| meta.require_list().cloned())
-                .map_or(Ok(None), |meta| meta.map(Some))?
-                .map(|meta| meta.tokens)
-                .map(syn::parse2)
-                .map_or(Ok(None), |meta| meta.map(Some))?
-                .unwrap_or_default();
+                let key = field
+                    .ident
+                    .as_ref()
+                    .map(|ident| ident.to_string())
+                    .unwrap_or_else(|| i.to_string());
 
-            let description = argue!(args may have Description)?.parse(lit_value)?;
+                let args: ArgumentList<PropertyArgument> = get_helper_attr(&field.attrs)?
+                    .map(|attr| &attr.meta)
+                    .map(|meta| meta.require_list().cloned())
+                    .map_or(Ok(None), |meta| meta.map(Some))?
+                    .map(|meta| meta.tokens)
+                    .map(syn::parse2)
+                    .map_or(Ok(None), |meta| meta.map(Some))?
+                    .unwrap_or_default();
 
-            let example = argue!(args may have Example)?.parse(|example| match example {
-                syn::Lit::Str(lit_str) => Ok(lit_str.value()),
-                rest => Ok(rest.to_token_stream().to_string()),
-            })?;
-            let format = argue!(args may have Format)?.parse(lit_value)?;
-            let reference = argue!(args may have Ref)?.map(|i| PropertyType::Ref(i.1.to_string()));
-            let required_arg = argue!(args may have Required)?.is_some();
-            let (ty, infered_meta) = get_ty_ident(&field.ty)?;
+                if let Some(reference) = argue!(args may have Ref)?.map(|i| {
+                    OrRef::Ref(ReferenceObject {
+                        component: ComponentType::Schema,
+                        name: i.1.to_string(),
+                    })
+                }) {
+                    return Ok((key, reference));
+                }
 
-            let format = format.and(infered_meta.format);
-            let ty = reference.unwrap_or(ty);
+                let description = argue!(args may have Description)?.parse(lit_value)?;
 
-            if infered_meta.required | required_arg {
-                required.push(key.clone());
-            }
+                let example = argue!(args may have Example)?.parse(|example| match example {
+                    syn::Lit::Str(lit_str) => Ok(lit_str.value()),
+                    rest => Ok(rest.to_token_stream().to_string()),
+                })?;
+                let format = argue!(args may have Format)?.parse(lit_value)?;
 
-            Ok((
-                key,
-                Property {
-                    ty,
-                    meta: PropertyMeta {
-                        format,
+                let property_required = argue!(args may have Required)?.is_some()
+                    || ty
+                        .path
+                        .segments
+                        .last()
+                        .expect("Must have at least one segment")
+                        .ident
+                        .to_string()
+                        == "Option";
+
+                let property_type = match path_to_property_type(ty, format)? {
+                    OrRef::Val(v) => v,
+                    OrRef::Ref(reference) => return Ok((key, OrRef::Ref(reference))),
+                };
+
+                if property_required {
+                    required.push(key.clone());
+                };
+
+                Ok((
+                    key,
+                    OrRef::Val(Property {
                         example,
                         description,
-                        items: infered_meta.items,
-                    },
-                },
-            ))
-        })
+                        ty: property_type,
+                    }),
+                ))
+            },
+        )
         .ok()?
         .into_iter()
         .fold(BTreeMap::new(), |mut map, (k, v)| {
@@ -193,104 +219,70 @@ fn declare_struct_schema(data_struct: &syn::DataStruct) -> Result<SpecStruct, sy
             map
         });
 
-    Ok(SpecStruct {
+    Ok(StructSpec {
         properties,
         required,
     })
 }
 
-struct InferedPropertyMeta {
+fn path_to_property_type(
+    path: &syn::TypePath,
     format: Option<String>,
-    items: Option<PropertyType>,
-    required: bool,
-}
-
-const NO_INFERED_META: InferedPropertyMeta = InferedPropertyMeta {
-    format: None,
-    required: true,
-    items: None,
-};
-
-fn get_ty_ident(ty: &syn::Type) -> Result<(PropertyType, InferedPropertyMeta), syn::Error> {
-    let path = match ty {
-        syn::Type::Path(type_path) => &type_path.path,
-        _ => {
-            return Err(syn::Error::new_spanned(
-                ty,
-                "Only Path types are supported for Schemas",
-            ));
-        }
-    };
-
+) -> Result<OrRef<PropertyType>, syn::Error> {
     let segment = path
+        .path
         .segments
         .last()
-        .map_or(Err(syn::Error::new_spanned(ty, "Empty Path?")), Ok)?;
+        .map_or(Err(syn::Error::new_spanned(path, "Empty Path?")), Ok)?;
 
     let inner = match &segment.arguments {
         syn::PathArguments::AngleBracketed(a) => a.args.iter().find_map(|a| match a {
-            syn::GenericArgument::Type(ty) => Some(ty),
+            syn::GenericArgument::Type(ty) => match ty {
+                syn::Type::Path(type_path) => Some(type_path),
+                _ => None,
+            },
             _ => None,
         }),
         _ => None,
     }
-    .ok_or_else(|| syn::Error::new_spanned(ty, "expected an inner type"));
+    .ok_or_else(|| syn::Error::new_spanned(path, "expected an inner type"));
+
+    use OrRef::*;
+    use PropertyType::*;
 
     match segment.ident.to_string().as_str() {
-        stringify!(Option) => {
-            let ty = get_ty_ident(inner?)?;
-            Ok((
-                ty.0,
-                InferedPropertyMeta {
-                    format: ty.1.format,
-                    items: ty.1.items,
-                    required: false,
-                },
-            ))
-        }
-        stringify!(Vec) => Ok((
-            PropertyType::Type("array".to_string()),
-            InferedPropertyMeta {
-                format: None,
-                items: Some(get_ty_ident(inner?)?.0),
-                required: true,
-            },
-        )),
-        stringify!(String) => Ok((PropertyType::Type("string".to_string()), NO_INFERED_META)),
-        stringify!(i32) => Ok((
-            PropertyType::Type("integer".to_string()),
-            InferedPropertyMeta {
-                format: Some(String::from("integer32")),
-                required: true,
-                items: None,
-            },
-        )),
-        stringify!(i64) => Ok((
-            PropertyType::Type("integer".to_string()),
-            InferedPropertyMeta {
-                format: Some(String::from("integer64")),
-                required: true,
-                items: None,
-            },
-        )),
-        stringify!(f32) => Ok((
-            PropertyType::Type("number".to_string()),
-            InferedPropertyMeta {
-                format: Some(String::from("float32")),
-                required: true,
-                items: None,
-            },
-        )),
-        stringify!(f64) => Ok((
-            PropertyType::Type("number".to_string()),
-            InferedPropertyMeta {
-                format: Some(String::from("float64")),
-                required: true,
-                items: None,
-            },
-        )),
-        stringify!(bool) => Ok((PropertyType::Type("boolean".to_string()), NO_INFERED_META)),
-        ty_ident => Ok((PropertyType::Ref(ty_ident.to_string()), NO_INFERED_META)),
+        stringify!(Option) => path_to_property_type(inner?, format),
+        stringify!(Vec) => Ok(Val(Array {
+            items: Box::new(path_to_property_type(inner?, format)?),
+        })),
+        stringify!(String) => Ok(Val(Primitive {
+            ty: "string",
+            format,
+        })),
+        stringify!(i32) => Ok(Val(Primitive {
+            ty: "number",
+            format: Some("int23".to_string()).and(format),
+        })),
+        stringify!(i64) => Ok(Val(Primitive {
+            ty: "number",
+            format: Some("int64".to_string()).and(format),
+        })),
+        stringify!(f32) => Ok(Val(Primitive {
+            ty: "number",
+            format: Some("float".to_string()).and(format),
+        })),
+        stringify!(f64) => Ok(Val(Primitive {
+            ty: "number",
+            format: Some("double".to_string()).and(format),
+        })),
+        stringify!(bool) => Ok(Val(Primitive {
+            ty: "boolean",
+            format: format,
+        })),
+        ty_ident => Ok(Ref(ReferenceObject {
+            component: ComponentType::Schema,
+            name: ty_ident.to_string(),
+        })),
     }
 }
 

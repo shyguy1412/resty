@@ -2,7 +2,11 @@ use proc_macro::TokenStream;
 use proc_macro_argue::{ArgumentList, argue};
 use quote::ToTokens;
 
-use crate::spec::{SPEC, Spec, get_attr_once};
+use crate::spec::{
+    SPEC, Spec,
+    definition::{ComponentType, ContentReference},
+    get_attr_once,
+};
 
 argue! {
     ResponseArgument {
@@ -63,14 +67,15 @@ fn declare_response(ident: &syn::Ident, input: proc_macro2::TokenStream) -> Resu
         .map(|content_type| {
             (
                 content_type,
-                super::SchemaRef {
-                    schema: super::PropertyType::Ref(ident.to_string()),
+                ContentReference {
+                    schema: super::ReferenceObject {
+                        component: ComponentType::Schema,
+                        name: ident.to_string(),
+                    },
                 },
             )
         });
 
-    let StatusArgument(code, ..) = argue!(args must have Status)?.1;
-    // let headers = argue!(args may repeat Header).map(|(.., h)| h);
     let name = argue!(args may have Schema)?
         .map(|(.., n)| n.value())
         .unwrap_or_else(|| ident.to_string());
@@ -78,7 +83,6 @@ fn declare_response(ident: &syn::Ident, input: proc_macro2::TokenStream) -> Resu
     let description = argue!(args must have Description)?.1.value();
 
     let response = super::Response {
-        code: code.base10_digits().to_string(),
         content: content_types.collect(),
         description,
     };

@@ -20,7 +20,7 @@ argue! {
         Summary: syn::LitStr,
         Description: syn::LitStr,
         Request: ArgumentList<RequestArgument>,
-        Response: ResponseType,
+        Response: ResponseArgument,
         Security: ArgumentList<SecurityArgument>
     };
     pub RequestArgument {
@@ -32,24 +32,24 @@ argue! {
         Name: syn::LitStr,
         Scope: syn::LitStr
     };
-    pub ContentlessResponseArgument(syn::LitInt, syn::token::Comma, syn::LitStr);
+    pub ResponseArgument(syn::LitInt, syn::token::Comma, ResponseType);
     pub SchemaArgument(syn::LitStr, syn::token::Comma, syn::Ident);
     pub HeaderArgument(syn::LitStr, syn::token::Comma, syn::LitStr);
 }
 
 pub enum ResponseType {
-    Path(syn::Path),
-    Code(ContentlessResponseArgument),
+    Ref(syn::Ident),
+    Contentless(syn::LitStr),
 }
 
 impl syn::parse::Parse for ResponseType {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         use ResponseType::*;
         let lookahead = input.lookahead1();
-        if lookahead.peek(syn::LitInt) {
-            Ok(Code(input.parse()?))
+        if lookahead.peek(syn::LitStr) {
+            Ok(Contentless(input.parse()?))
         } else {
-            Ok(Path(input.parse()?))
+            Ok(Ref(input.parse()?))
         }
     }
 }

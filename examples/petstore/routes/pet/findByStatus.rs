@@ -6,7 +6,6 @@ use crate::schemas::Pet;
     Tag("pet"),
     Summary("Finds Pets by status"),
     Description("Multiple status values can be provided with comma separated strings"),
-    Response(Vec<Pet>),
     Response(400, "Invalid ID supplied"),
     Response(404, "Pet not found"),
     Response(422, "Validation exception"),

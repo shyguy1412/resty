@@ -7,7 +7,13 @@ use crate::{
     ResultIterator,
     endpoint::*,
     routing,
-    spec::{RequestBody, SPEC, Spec, lit_value},
+    spec::{
+        RequestBody, SPEC, Spec,
+        definition::{
+            ComponentType, ContentReference, ContentlessResponse, OrRef, ReferenceObject,
+        },
+        lit_value,
+    },
 };
 
 pub fn add_path(
@@ -32,7 +38,9 @@ pub fn add_path(
     let description = argue!(args may have Description)?.parse(lit_value)?;
     let responses = argue!(args may repeat Response)
         .parse_iter(parse_response)
-        .ok()?;
+        .ok()?
+        .into_iter()
+        .collect::<BTreeMap<_, _>>();
 
     let security = argue!(args may repeat Security)
         .parse_iter(parse_security)
@@ -45,14 +53,14 @@ pub fn add_path(
     let path = spec
         .paths
         .entry(format!("/{route}"))
-        .or_insert_with(|| super::Path {
-            methods: BTreeMap::new(),
+        .or_insert_with(|| super::PathItem {
+            operations: BTreeMap::new(),
         });
 
     for method in methods {
-        path.methods.insert(
+        path.operations.insert(
             method.clone(),
-            super::Method {
+            super::OperationObject {
                 tags: tags.clone(),
                 summary: summary.clone(),
                 description: description.clone(),
@@ -68,21 +76,20 @@ pub fn add_path(
     Ok(())
 }
 
-fn parse_response(arg: &ResponseType) -> Result<super::ResponseType, syn::Error> {
-    let r = match arg {
-        ResponseType::Path(path) => super::ResponseType::Ref(
-            path.segments
-                .last()
-                .ok_or(syn::Error::new_spanned(path, "Can not parse path"))?
-                .ident
-                .to_string(),
-        ),
-        ResponseType::Code(ContentlessResponseArgument(lit_int, _, lit_str)) => {
-            super::ResponseType::Raw(lit_int.base10_digits().to_string(), lit_str.value())
-        }
+fn parse_response(
+    arg: &ResponseArgument,
+) -> Result<(String, OrRef<ContentlessResponse>), syn::Error> {
+    let r = match &arg.2 {
+        ResponseType::Ref(ident) => OrRef::Ref(ReferenceObject {
+            component: ComponentType::Response,
+            name: ident.to_string(),
+        }),
+        ResponseType::Contentless(lit_str) => OrRef::Val(ContentlessResponse {
+            description: lit_str.value(),
+        }),
     };
 
-    Ok(r)
+    Ok((arg.0.base10_digits().to_string(), r))
 }
 
 fn parse_request_body(arg: &ArgumentList<RequestArgument>) -> Result<RequestBody, syn::Error> {
@@ -101,13 +108,16 @@ fn parse_request_body(arg: &ArgumentList<RequestArgument>) -> Result<RequestBody
     })
 }
 
-fn parse_request_schema(arg: &SchemaArgument) -> Result<(String, super::SchemaRef), syn::Error> {
+fn parse_request_schema(arg: &SchemaArgument) -> Result<(String, ContentReference), syn::Error> {
     let SchemaArgument(content_type, _, schema) = arg;
 
     Ok((
         content_type.value(),
-        super::SchemaRef {
-            schema: super::PropertyType::Ref(schema.to_string()),
+        ContentReference {
+            schema: ReferenceObject {
+                component: ComponentType::Schema,
+                name: schema.to_string(),
+            },
         },
     ))
 }

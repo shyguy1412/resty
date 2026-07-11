@@ -45,47 +45,33 @@ pub fn derive_response(input: TokenStream) -> TokenStream {
     tri!(spec::response_macro_impl(input) => TokenStream::new())
 }
 
-trait ResultIterator<T> {
-    fn ok(self) -> Result<Vec<T>, syn::Error>;
-}
+trait ResultIterator<V, E>
+where
+    Self: Iterator<Item = Result<V, E>> + Sized,
+    E: std::iter::Extend<E> + IntoIterator<Item = E>,
+{
+    fn ok(self) -> Result<Vec<V>, E> {
+        let mut error: Option<E> = None;
+        let extend_error = &mut |e: E| {
+            match &mut error {
+                Some(error) => error.extend(e),
+                None => error = Some(e),
+            }
+            None
+        };
 
-impl<V, T: IntoIterator<Item = Result<V, syn::Error>>> ResultIterator<V> for T {
-    fn ok(self) -> Result<Vec<V>, syn::Error> {
-        let (values, errors) = collect_errors(self.into_iter());
-        combine_errors(errors)?;
-        Ok(values)
+        let ok = self
+            .filter_map(|r| match r {
+                Ok(v) => Some(v),
+                Err(e) => extend_error(e),
+            })
+            .collect::<Vec<_>>();
+
+        error.map_or(Ok(ok), Err)
     }
 }
 
-// trait Reparse: quote::ToTokens {
-//     fn reparse<T: syn::parse::Parse>(&self) -> Result<T, syn::Error> {
-//         syn::parse(self.to_token_stream().into())
-//     }
-
-//     #[allow(unused)]
-//     fn reparse_with<P: syn::parse::Parser>(&self, parser: P) -> Result<P::Output, syn::Error> {
-//         parser.parse(self.to_token_stream().into())
-//     }
-// }
-
-// impl<T: quote::ToTokens> Reparse for T {}
-
-fn collect_errors<V, E>(it: impl IntoIterator<Item = Result<V, E>>) -> (Vec<V>, Vec<E>) {
-    it.into_iter()
-        .fold((Vec::new(), Vec::new()), |mut collector, next| {
-            match next {
-                Ok(ident) => collector.0.push(ident),
-                Err(err) => collector.1.push(err),
-            };
-            collector
-        })
-}
-
-fn combine_errors(errors: Vec<syn::Error>) -> Result<(), syn::Error> {
-    if let Some(mut error) = errors.get(0).cloned() {
-        error.extend(errors.into_iter().skip(1));
-        return Err(error);
-    }
-
-    return Ok(());
+impl<V, T: Iterator<Item = Result<V, syn::Error>>> ResultIterator<V, syn::Error> for T where
+    Self: Iterator<Item = Result<V, syn::Error>> + Sized
+{
 }

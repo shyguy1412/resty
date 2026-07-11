@@ -13,7 +13,7 @@ use crate::schemas::Pet;
         Schema("application/x-www-form-urlencoded", Pet),
         Required
     ),
-    Response(Pet),
+    Response(200, Pet),
     Response(400, "Invalid ID supplied"),
     Response(404, "Pet not found"),
     Response(422, "Validation exception"),
