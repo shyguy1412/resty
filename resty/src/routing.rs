@@ -136,10 +136,6 @@ impl Router {
             .inspect(|middleware| middlewares.push(*middleware));
 
         while let Some(current_segment) = segments.next() {
-            if current_segment == "" {
-                continue;
-            }
-
             let dynamic = || {
                 route
                     .segments
