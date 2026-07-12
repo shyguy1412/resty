@@ -42,6 +42,7 @@ impl<T: Iterator> AsyncIterator for T {
     }
 }
 
+/// Naive implementation for a thread safe, multi producer event queue for server sent events
 pub struct EventManager<E>
 where
     E: Send + Sync + 'static,

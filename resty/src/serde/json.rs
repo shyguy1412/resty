@@ -1,5 +1,6 @@
 use crate::{ContentType, DeserializeBuffered, RestResponse, Serialize};
 
+/// An extractor and content type for sending and receiving JSON
 pub struct Json<T: serde::de::DeserializeOwned + serde::Serialize>(pub T);
 impl<T> DeserializeBuffered for Json<T>
 where

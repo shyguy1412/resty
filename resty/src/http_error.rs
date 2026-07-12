@@ -1,3 +1,5 @@
+//! This module auto-generates constants for a bunch of standard HTTP errors
+
 #![cfg(feature = "http_error")]
 
 const NO_HEADERS: &'static [(&'static str, &'static str)] = &[];

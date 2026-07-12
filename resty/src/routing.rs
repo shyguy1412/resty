@@ -5,8 +5,7 @@ use crate::{HttpMethod, Request, Response};
 /// Type alias for the dyn Trait a Handler function must have
 ///
 /// This is not generally used directly since the `#[endpoint]` macro wraps your
-/// async function to comply with this Trait
-// type Handler = dyn for<'a> Fn(Request<'a>, Response<'a>) -> crate::EndpointTask<'a> + Sync;
+/// async function to match this type
 type Handler = dyn for<'a, 'data, 'b> Fn(
         &'b mut Request<'a, 'data>,
         &'b mut Response<'a>,
@@ -195,11 +194,3 @@ pub type RouteSlice = (
     &'static [&'static str], // route segments
     HandlerOrMiddleware,
 );
-
-// /// Data passed to a handler
-// pub struct HandlerData<'a> {
-//     pub request: httparse::Request<'a, 'a>,
-//     pub path_params: Vec<&'a str>,
-//     pub readable: &'a mut Readable,
-//     pub writeable: &'a mut Writeable,
-// }

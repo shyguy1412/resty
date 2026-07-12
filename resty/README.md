@@ -24,14 +24,13 @@ Example settings for vscode
 ## Example
 
 ```rust
-#[resty::manual_routing]
+#[resty::router]
 static ROUTER: LazyLock<Router>;
 
 #[resty::endpoint(
     Route("/"),
     Router(ROUTER),
     Method(GET),
-    Responds(200, String)
     Header("Content-Type", "text/html; charset=utf-8")
 )]
 async fn get_hello_world<'a>(_req: &mut Request<'a>, res: &mut Response<'a>) -> resty::Result {

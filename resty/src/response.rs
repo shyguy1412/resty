@@ -1,5 +1,3 @@
-use std::ops::{Deref, DerefMut};
-
 use smol::io::AsyncWriteExt;
 
 use crate::{AsyncIterator, ContentType, Error, RestResponse, Serialize};
@@ -11,29 +9,17 @@ pub(crate) enum ResponseState {
     Header,
     Body,
     Done,
+    RawAccess,
 }
 
 pub type Writeable = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
 
+/// An HTTP response. Provides a set of high level APIs to send or stream reponse data.
 pub struct Response<'a> {
     pub(crate) state: ResponseState,
     writeable: &'a mut Writeable,
     static_headers: &'static [(&'static str, &'static str)],
     once: bool,
-}
-
-impl Deref for Response<'_> {
-    type Target = std::pin::Pin<Box<dyn smol::io::AsyncWrite + Send>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.writeable
-    }
-}
-
-impl DerefMut for Response<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.writeable
-    }
 }
 
 impl<'a> Response<'a> {
@@ -133,21 +119,25 @@ impl<'a> Response<'a> {
         Ok(())
     }
 
-    pub async fn stream<E: Serialize, D: Deref<Target = E>>(
+    /// Stream elements of an async iterator
+    /// currently only supported in combination with Server Sent Events
+    pub async fn stream<E: Serialize, D: std::ops::Deref<Target = E>>(
         &mut self,
         mut stream: impl AsyncIterator<Item = D>,
     ) -> Result<(), Error> {
         self.status(200, "OK").await?;
         self.headers(&[("Content-Type", "text/event-stream")])
             .await?;
-        self.write_all(b"\r\n\r\n")
+        self.writeable
+            .write_all(b"\r\n\r\n")
             .await
             .map_err(|e| e.to_string())
             .map_err(Error::WriteError)?;
 
         while let Some(data) = stream.next().await {
             let data = Serialize::serialize(data.deref()).map_err(|_| Error::SerializeError)?;
-            self.write_all(&data)
+            self.writeable
+                .write_all(&data)
                 .await
                 .map_err(|e| e.to_string())
                 .map_err(Error::WriteError)?;
@@ -156,11 +146,24 @@ impl<'a> Response<'a> {
         Ok(())
     }
 
+    /// Close the response.
+    /// This does not gurantee that the underlying stream will be closed aswell
     pub async fn close(&mut self) {
         if self.state == ResponseState::Done {
             return;
         }
+        if self.state == ResponseState::RawAccess {
+            let _ = self.writeable.close().await;
+        }
         let _ = self.status(500, "Internal Server Error").await;
         let _ = self.send(&"").await;
+    }
+
+    /// Provides access to the raw byte stream of a response.
+    /// Calling this function will cause future calls to high level APIs to return a state error
+    /// Additionally, this will cause the connection to be forcefully closed after the request is done
+    pub fn raw_stream<'s>(&'s mut self) -> &'s mut Writeable {
+        self.state = ResponseState::RawAccess;
+        &mut self.writeable
     }
 }

@@ -14,6 +14,7 @@ use crate::schemas::Pet;
         Required
     ),
     Response(200, Pet),
+    Response(201, String),
     Response(400, "Invalid ID supplied"),
     Response(404, "Pet not found"),
     Response(422, "Validation exception"),

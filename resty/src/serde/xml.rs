@@ -1,5 +1,6 @@
 use crate::{ContentType, DeserializeBuffered, RestResponse, Serialize};
 
+/// An extractor and content type for sending and receiving XML
 pub struct XML<T: serde::de::DeserializeOwned + serde::Serialize>(pub T);
 impl<T> DeserializeBuffered for XML<T>
 where

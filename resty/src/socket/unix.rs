@@ -2,6 +2,7 @@ use std::{marker::PhantomData, path::Path};
 
 use smol::net::unix::{UnixListener, UnixStream};
 
+/// Implementation for using Unix sockets as transport layer
 pub struct UnixSocket<P = &'static str>(UnixListener, PhantomData<P>);
 
 impl<P: AsRef<Path> + Send + Sync> super::Socket for UnixSocket<P> {

@@ -2,6 +2,7 @@ use std::{marker::PhantomData, net::SocketAddrV4};
 
 use smol::net::{AsyncToSocketAddrs, TcpListener, TcpStream};
 
+/// Implementation for a TCP transport layer
 pub struct TcpScocket<A = SocketAddrV4>(TcpListener, PhantomData<A>);
 
 impl<A: AsyncToSocketAddrs + Send + Sync> super::Socket for TcpScocket<A> {

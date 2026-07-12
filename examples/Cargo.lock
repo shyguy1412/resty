@@ -518,7 +518,7 @@ dependencies = [
 
 [[package]]
 name = "resty"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "httparse",
  "linkme",
@@ -532,7 +532,7 @@ dependencies = [
 
 [[package]]
 name = "resty_macros"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "proc-macro2",
  "proc_macro_argue",

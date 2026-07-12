@@ -1,5 +1,3 @@
-use std::ops::{Deref, DerefMut};
-
 use smol::io::AsyncReadExt;
 use url::Url;
 
@@ -13,7 +11,8 @@ pub type Readable<'a> = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send + 'a>>;
 
 /// An partially parsed Request with headers, cookies and path parameters.  
 ///
-/// The request body is read lazily
+/// The request body is read lazily on demand. Reading the request body consumes it from the stream.
+/// Trying to read a request body twice will return a StateError
 pub struct Request<'a, 'data: 'a> {
     pub headers: &'a [httparse::Header<'data>],
     pub url: &'a Url,
@@ -81,38 +80,16 @@ impl<'a, 'data: 'a> Request<'a, 'data> {
         res
     }
 
-    //Parse some value out of the request body.
-    //Useful for requests that stream multiple elements like a newline separated list of JSON objects
+    /// Parse some value out of the request body.
+    /// Useful for requests that stream multiple elements like a newline separated list of JSON objects
     pub async fn parse<P: Parse>(&mut self) -> Result<P, Error> {
-        P::parse(self).map_err(|e| ParseError(e.to_string()))
+        P::parse(self.readable).map_err(|e| ParseError(e.to_string()))
     }
-}
 
-impl<'data> Deref for Request<'_, 'data> {
-    type Target = std::pin::Pin<Box<dyn smol::io::AsyncRead + Send + 'data>>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.readable
-    }
-}
-
-impl<'data> DerefMut for Request<'_, 'data> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
+    /// Provides access to the raw byte stream of a request.
+    /// Calling this function will cause future calls to `body()` to fail
+    pub fn raw_stream<'s>(&'s mut self) -> &'s mut Readable<'data> {
+        self.body = true;
         &mut self.readable
     }
 }
-
-// impl<'a, 'b: 'a> Request<'b> {
-//     pub fn as_typed(&'a mut self) -> Request<'a> {
-//         Request {
-//             headers: self.headers,
-//             url: self.url,
-//             cookies: self.cookies,
-//             path_params: self.path_params,
-//             method: self.method,
-//             version: self.version,
-//             readable: self.readable,
-//             body: None,
-//         }
-//     }
-// }
