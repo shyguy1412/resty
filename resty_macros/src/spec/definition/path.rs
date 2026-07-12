@@ -10,7 +10,7 @@ pub struct PathItem {
     pub operations: BTreeMap<String, OperationObject>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OperationObject {
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -29,7 +29,7 @@ pub struct OperationObject {
     pub security: Vec<BTreeMap<String, Vec<String>>>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Parameter {
     pub name: String,
     #[serde(rename = "in")]
@@ -38,7 +38,7 @@ pub struct Parameter {
     pub description: Option<String>,
     pub required: bool,
     pub explode: bool,
-    pub schema: String,
+    pub schema: OrRef<Schema>,
 }
 
 #[derive(Serialize, Clone)]

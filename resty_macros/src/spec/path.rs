@@ -9,16 +9,14 @@ use crate::{
     routing,
     spec::{
         RequestBody, SPEC, Spec,
-        definition::{ComponentType, ContentReference, OrRef, ReferenceObject, Response},
+        definition::{
+            ComponentType, ContentReference, OrRef, Parameter, ReferenceObject, Response,
+        },
         lit_value,
     },
 };
 
-pub fn add_path(
-    args: TokenStream, // (_, args): (&syn::Ident, &ArgumentList<syn::MetaList>),
-                       // route: &Vec<String>,
-                       // method: &ArgumentList<syn::Expr>,
-) -> Result<(), syn::Error> {
+pub fn add_path(args: TokenStream) -> Result<(), syn::Error> {
     use crate::endpoint::HandlerArgument::*;
     let args: ArgumentList<HandlerArgument> = syn::parse(args)?;
 
@@ -34,18 +32,23 @@ pub fn add_path(
     let tags = argue!(args may repeat Tag).parse_iter(lit_value).ok()?;
     let summary = argue!(args may have Summary)?.parse(lit_value)?;
     let description = argue!(args may have Description)?.parse(lit_value)?;
+    let request_body = argue!(args may have Request)?.parse(request_body)?;
+
+    let parameters = argue!(args may repeat Parameter)
+        .parse_iter(parameter)
+        .ok()?;
+
     let responses = argue!(args may repeat Response)
-        .parse_iter(parse_response)
+        .parse_iter(response)
         .ok()?
         .into_iter()
         .collect::<BTreeMap<_, _>>();
 
     let security = argue!(args may repeat Security)
-        .parse_iter(parse_security)
+        .parse_iter(security)
         .ok()?
         .into_iter()
         .collect::<Vec<_>>();
-    let request_body = argue!(args may have Request)?.parse(parse_request_body)?;
 
     let mut spec = SPEC.get();
     let path = spec
@@ -55,26 +58,52 @@ pub fn add_path(
             operations: BTreeMap::new(),
         });
 
+    let operation_object = super::OperationObject {
+        tags,
+        summary,
+        description,
+        request_body,
+        operation_id: String::new(),
+        parameters,
+        responses,
+        security,
+    };
+
     for method in methods {
-        path.operations.insert(
-            method.clone(),
-            super::OperationObject {
-                tags: tags.clone(),
-                summary: summary.clone(),
-                description: description.clone(),
-                request_body: request_body.clone(),
-                operation_id: format!("{method}{}", route.replace("/", "_")),
-                parameters: vec![],
-                responses: responses.clone(),
-                security: security.clone(),
-            },
-        );
+        let mut operation_object = operation_object.clone();
+        operation_object.operation_id = format!("{method}{}", route.replace("/", "_"));
+        path.operations.insert(method, operation_object);
     }
 
     Ok(())
 }
 
-fn parse_response(arg: &ResponseArgument) -> Result<(String, OrRef<Response>), syn::Error> {
+fn parameter(arg: &ArgumentList<ParameterArgument>) -> Result<Parameter, syn::Error> {
+    use ParameterArgument::*;
+
+    let name = argue!(arg must have Name).map(|(.., v)| v.value())?;
+    let is_in = argue!(arg must have In).map(|(.., v)| v.value())?;
+    let description = argue!(arg may have Description)?.parse(lit_value)?;
+    let required = argue!(arg may have Required)?.is_some();
+    let explode = argue!(arg may have Explode)?.is_some();
+    let schema = argue!(arg must have Schema).map(|(.., r)| {
+        OrRef::Ref(ReferenceObject {
+            component: ComponentType::Schema,
+            name: r.to_string(),
+        })
+    })?;
+
+    Ok(Parameter {
+        name,
+        is_in,
+        description,
+        required,
+        explode,
+        schema,
+    })
+}
+
+fn response(arg: &ResponseArgument) -> Result<(String, OrRef<Response>), syn::Error> {
     let r = match &arg.2 {
         ResponseType::Ref(ident) => OrRef::Ref(ReferenceObject {
             component: ComponentType::Response,
@@ -93,13 +122,13 @@ fn parse_response(arg: &ResponseArgument) -> Result<(String, OrRef<Response>), s
     Ok((arg.0.base10_digits().to_string(), r))
 }
 
-fn parse_request_body(arg: &ArgumentList<RequestArgument>) -> Result<RequestBody, syn::Error> {
+fn request_body(arg: &ArgumentList<RequestArgument>) -> Result<RequestBody, syn::Error> {
     use crate::endpoint::RequestArgument::*;
 
     let description = argue!(arg may have Description)?.parse(lit_value)?;
     let required = argue!(arg may have Required)?.is_some();
     let content = argue!(arg may repeat Schema)
-        .parse_iter(parse_request_schema)
+        .parse_iter(request_schema)
         .ok()?;
 
     Ok(super::RequestBody {
@@ -109,7 +138,7 @@ fn parse_request_body(arg: &ArgumentList<RequestArgument>) -> Result<RequestBody
     })
 }
 
-fn parse_request_schema(arg: &SchemaArgument) -> Result<(String, ContentReference), syn::Error> {
+fn request_schema(arg: &SchemaArgument) -> Result<(String, ContentReference), syn::Error> {
     let SchemaArgument(content_type, _, schema) = arg;
 
     Ok((
@@ -123,7 +152,7 @@ fn parse_request_schema(arg: &SchemaArgument) -> Result<(String, ContentReferenc
     ))
 }
 
-fn parse_security(
+fn security(
     arg: &ArgumentList<SecurityArgument>,
 ) -> Result<BTreeMap<String, Vec<String>>, syn::Error> {
     use crate::endpoint::SecurityArgument::*;
