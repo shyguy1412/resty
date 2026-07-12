@@ -11,13 +11,21 @@ static TEST_SOURCE: LazyLock<EventManager<ServerSentEvent<Json<Pet>>>> =
     Tag("pet"),
     Summary("Finds Pets by status"),
     Description("Multiple status values can be provided with comma separated strings"),
+    Parameter(
+        Name("status"),
+        In("query"),
+        Description("Status values that need to be considered for filter"),
+        Required,
+        Explode,
+        Schema(PetStatus)
+    ),
     Response(200, [Pet]),
     Response(400, "Invalid ID supplied"),
     Response(404, "Pet not found"),
     Response(422, "Validation exception"),
     Security(Name("petstore_auth"), Scope("write:pets"), Scope("read:pets")),
     Method(GET),
-    // Router(super::super::ROUTER)
+    // Router(crate::ROUTER)
 )]
 async fn get_by_status<'a, 'b>(req: &mut Request<'a, 'b>, res: &mut Response<'a>) -> resty::Result {
     let sse = TEST_SOURCE.consumer().await;

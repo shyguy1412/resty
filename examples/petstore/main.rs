@@ -1,4 +1,4 @@
-//! This example is implements a rest api as defined in https://petstore.swagger.io/v2/swagger.json
+//! This example partially implements a rest api as defined in https://petstore.swagger.io/v2/swagger.json
 
 use std::{
     net::{Ipv4Addr, SocketAddrV4},
@@ -8,10 +8,9 @@ use std::{
 
 use resty::{Request, Response, Router, TcpScocket, endpoint};
 
+mod db;
 mod responses;
 mod schemas;
-
-//IDEA: make router a struct with a router trait and derive macro
 
 #[resty::router(
     FileBased("./routes"),
@@ -60,15 +59,6 @@ mod schemas;
     )
 )]
 static ROUTER: LazyLock<Router>;
-
-#[endpoint(Method(GET), Router(ROUTER), Route("/"))]
-async fn get_home<'a, 'b>(req: &mut Request<'a, 'b>, res: &mut Response<'a>) -> resty::Result {
-    res.status(200, "OK").await?;
-    res.send(&"Hallo Welt")
-        .await
-        .inspect_err(|e| println!("{e}"))?;
-    Ok(())
-}
 
 fn main() -> ExitCode {
     const ADDR: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 3333);
