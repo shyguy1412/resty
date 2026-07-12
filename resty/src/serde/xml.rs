@@ -1,10 +1,10 @@
 use crate::{ContentType, DeserializeBuffered, RestResponse, Serialize};
 
 /// An extractor and content type for sending and receiving XML
-pub struct XML<T: serde::de::DeserializeOwned + serde::Serialize>(pub T);
+pub struct XML<T>(pub T);
 impl<T> DeserializeBuffered for XML<T>
 where
-    T: serde::de::DeserializeOwned + serde::Serialize,
+    T: serde::de::DeserializeOwned,
 {
     fn deserialize(data: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(XML(serde_xml_rs::from_reader(data)?))
@@ -13,7 +13,7 @@ where
 
 impl<T> Serialize for XML<T>
 where
-    T: serde::de::DeserializeOwned + serde::Serialize,
+    T: serde::Serialize,
 {
     fn serialize(data: &Self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut vec = Vec::new();
@@ -22,6 +22,6 @@ where
     }
 }
 
-impl<T: serde::de::DeserializeOwned + serde::Serialize + RestResponse> ContentType<T> for XML<T> {
+impl<T: serde::Serialize + RestResponse> ContentType<&'_ T> for XML<&'_ T> {
     const CONTENT_TYPE: &'static str = "application/xml";
 }

@@ -107,7 +107,7 @@ impl<B: Serialize> Serialize for ServerSentEvent<B> {
 /// Implementing ContentType lets the response infer the content type header
 /// this is  implemented by an extractor like Json or XML
 /// The content type trait makes no assumption about how and if a given T can be serialized
-pub trait ContentType<T>: Serialize + Deserialize {
+pub trait ContentType<T>: Serialize {
     const CONTENT_TYPE: &'static str;
 }
 
@@ -121,8 +121,13 @@ where
     const REASON: &'static str;
     const HEADERS: &'static [(&'static str, &'static str)];
 }
+impl<T: RestResponse> RestResponse for &T {
+    const CODE: u16 = T::CODE;
+    const REASON: &'static str = T::REASON;
+    const HEADERS: &'static [(&'static str, &'static str)] = T::HEADERS;
+}
 
-impl<T: RestResponse> ContentType<T> for NoBody<T> {
+impl<T: RestResponse> ContentType<&'_ T> for NoBody<&'_ T> {
     const CONTENT_TYPE: &'static str = "none";
 }
 

@@ -10,7 +10,7 @@ macro_rules! http_error {
 
         #[allow(non_snake_case)]
         mod $ident {
-            pub const ERROR: crate::NoBody<$ident> = crate::NoBody($ident);
+            pub const ERROR: crate::NoBody<&$ident> = crate::NoBody(&$ident);
             pub struct $ident;
             impl crate::RestResponse for $ident
             {
