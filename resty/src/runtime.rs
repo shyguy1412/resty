@@ -25,6 +25,10 @@ pub fn bind<S: Socket + 'static>(
     Ok(())
 }
 
+pub(crate) fn task<O: Send + 'static>(task: impl Future<Output = O> + Send + 'static) {
+    EXECUTOR.spawn(task).detach();
+}
+
 /// Spawns a worker thread to handle the async task queue.
 ///
 /// At least one worker thread must be spawned

@@ -23,6 +23,8 @@ pub use runtime::*;
 mod socket;
 pub use socket::*;
 
+mod server_sent_events;
+pub use server_sent_events::*;
 #[derive(Debug, Clone)]
 pub enum Error {
     SerializeError,

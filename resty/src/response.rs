@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use smol::io::AsyncWriteExt;
 
-use crate::{ContentType, Error, RestResponse, Serialize};
+use crate::{AsyncIterator, ContentType, Error, RestResponse, Serialize};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum ResponseState {
@@ -130,6 +130,29 @@ impl<'a> Response<'a> {
         self.headers(R::HEADERS).await?;
         self.headers(&[("Content-Type", C::CONTENT_TYPE)]).await?;
         self.send(&response).await?;
+        Ok(())
+    }
+
+    pub async fn stream<E: Serialize, D: Deref<Target = E>>(
+        &mut self,
+        mut stream: impl AsyncIterator<Item = D>,
+    ) -> Result<(), Error> {
+        self.status(200, "OK").await?;
+        self.headers(&[("Content-Type", "text/event-stream")])
+            .await?;
+        self.write_all(b"\r\n\r\n")
+            .await
+            .map_err(|e| e.to_string())
+            .map_err(Error::WriteError)?;
+
+        while let Some(data) = stream.next().await {
+            let data = Serialize::serialize(data.deref()).map_err(|_| Error::SerializeError)?;
+            self.write_all(&data)
+                .await
+                .map_err(|e| e.to_string())
+                .map_err(Error::WriteError)?;
+        }
+
         Ok(())
     }
 

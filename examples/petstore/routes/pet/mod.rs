@@ -1,4 +1,4 @@
-use resty::{Json, Request, Response, XML, endpoint, http_error};
+use resty::{AsyncWriteExt, Json, Request, Response, XML, endpoint, http_error};
 
 use crate::schemas::Pet;
 
@@ -23,6 +23,5 @@ use crate::schemas::Pet;
 async fn put_pet<'a, 'b>(req: &mut Request<'a, 'b>, res: &mut Response<'a>) -> resty::Result {
     let Json(body): Json<Pet> = req.body().await?;
 
-    res.respond(http_error::HttpError400).await?;
     Ok(())
 }

@@ -1,5 +1,6 @@
 pub use crate::request::Readable as DeserializeStream;
-pub use smol::io::AsyncReadExt;
+pub use smol::io::{AsyncReadExt, AsyncWriteExt};
+use std::io::Write;
 
 #[cfg(all(feature = "serde", feature = "json"))]
 mod json;
@@ -76,6 +77,26 @@ impl<T> Deserialize for NoBody<T> {
         _: usize,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         Err(crate::Error::UnTypedRequest)?
+    }
+}
+
+pub struct ServerSentEvent<B: Serialize> {
+    pub body: B,
+    pub event: String,
+}
+
+impl<B: Serialize> Serialize for ServerSentEvent<B> {
+    fn serialize(data: &Self) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let body = Serialize::serialize(&data.body)?;
+        let event = &data.event;
+
+        //100 bytes should be a good extra buffer for regular usage
+        let mut result = Vec::with_capacity(body.len() * 100);
+
+        write!(result, "event: {event}\ndata: ")?;
+        std::io::Write::write_all(&mut result, &body)?;
+        write!(result, "\n\n")?;
+        Ok(result)
     }
 }
 

@@ -6,7 +6,7 @@ use std::{
     sync::LazyLock,
 };
 
-use resty::{Router, TcpScocket};
+use resty::{Request, Response, Router, TcpScocket, endpoint};
 
 mod responses;
 mod schemas;
@@ -61,6 +61,15 @@ mod schemas;
 )]
 static ROUTER: LazyLock<Router>;
 
+#[endpoint(Method(GET), Router(ROUTER), Route("/"))]
+async fn get_home<'a, 'b>(req: &mut Request<'a, 'b>, res: &mut Response<'a>) -> resty::Result {
+    res.status(200, "OK").await?;
+    res.send(&"Hallo Welt")
+        .await
+        .inspect_err(|e| println!("{e}"))?;
+    Ok(())
+}
+
 fn main() -> ExitCode {
     const ADDR: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 3333);
     if let Err(error) = resty::bind::<TcpScocket>(ADDR, &ROUTER) {
@@ -69,6 +78,8 @@ fn main() -> ExitCode {
     }
 
     println!("Listening on port 3333");
+
+    println!("{ROUTER:?}");
 
     let _: Vec<_> = std::thread::available_parallelism()
         .ok()

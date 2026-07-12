@@ -10,24 +10,24 @@ use serde::{Deserialize, Serialize};
 )]
 pub struct Pet {
     #[schema(Example(10), Required)]
-    id: Option<i64>,
+    pub id: Option<i64>,
 
     #[schema(Example("doggie"))]
-    name: String,
+    pub name: String,
 
-    category: Option<super::Category>,
+    pub category: Option<super::Category>,
 
-    photo_urls: Option<Vec<String>>,
-    tags: Option<Vec<super::Tag>>,
+    pub photo_urls: Option<Vec<String>>,
+    pub tags: Option<Vec<super::Tag>>,
 
     #[schema(Ref(PetStatus))]
-    status: Option<Status>,
+    pub status: Option<Status>,
 }
 
 #[derive(Deserialize, Serialize, Schema)]
 #[serde(rename_all = "lowercase")]
 #[schema(Name(PetStatus))]
-enum Status {
+pub enum Status {
     #[schema(Example)]
     Available,
     Pending,
