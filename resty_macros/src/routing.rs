@@ -227,13 +227,13 @@ fn get_endpoint_path() -> Option<String> {
         .map(|s| s.to_string())
 }
 
-pub fn default_router() -> Result<syn::Path, syn::Error> {
+pub fn default_router() -> Result<Option<syn::Path>, syn::Error> {
     let source_file = proc_macro::Span::call_site()
         .local_file()
         .unwrap_or("".into());
 
     if source_file == *"" {
-        return syn::parse_str("super::RUST_ANALYZER_PLACEHOLDER");
+        return Ok(None);
     }
 
     ROUTERS
@@ -244,7 +244,7 @@ pub fn default_router() -> Result<syn::Path, syn::Error> {
             Some(p) => source_file.strip_prefix(p).is_ok(),
             None => false,
         })
-        .and_then(|router| syn::parse_str(&format!("super::{}", router.ident)).ok())
+        .map(|router| syn::parse_str(&format!("super::{}", router.ident)).ok())
         .ok_or(syn::Error::new(
             proc_macro::Span::call_site().into(),
             "Can not infer Router. Maybe you are missing a Router directive?",

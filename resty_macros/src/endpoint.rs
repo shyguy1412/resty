@@ -15,13 +15,23 @@ argue! {
         Method: syn::Ident,
         Router: syn::Path,
         Route: syn::LitStr,
-        Header: HeaderArgument,
+        //Temporarily retired until I figure out what to do with static headers
+        // Header: HeaderArgument,
+        Parameter: ArgumentList<ParameterArgument>,
         Tag: syn::LitStr,
         Summary: syn::LitStr,
         Description: syn::LitStr,
         Request: ArgumentList<RequestArgument>,
         Response: ResponseArgument,
         Security: ArgumentList<SecurityArgument>
+    };
+    pub ParameterArgument {
+        Name: syn::LitStr,
+        In: syn::LitStr,
+        Description: syn::LitStr,
+        Required,
+        Explode,
+        Schema: syn::Ident
     };
     pub RequestArgument {
         Description: syn::LitStr,
@@ -117,11 +127,17 @@ fn handler_impl(
     let args: ArgumentList<HandlerArgument> = syn::parse(args)?;
     let router = argue!(args may have Router)?
         .parse(parse_router)?
+        .map(Some)
         .map_or_else(routing::default_router, Ok)?;
 
-    let headers: Vec<_> = argue!(args may repeat Header)
-        .map(|(.., header)| header)
-        .collect();
+    //Omits linkme when in the rust-analyzer pass
+    let slice_attr = match router {
+        Some(router) => quote::quote! {
+            #[linkme::distributed_slice(#router)]
+            #[linkme(crate = linkme)]
+        },
+        None => quote::quote! {},
+    };
 
     let route = argue!(args may have Route)?
         .parse(parse_route)?
@@ -136,7 +152,7 @@ fn handler_impl(
         ) -> ::resty::EndpointTask<'__fn_borrow> {
             #handler_fn;
 
-            const STATIC_HEADERS :&[(&str, &str)] = &[#((#headers)),*];
+            // const STATIC_HEADERS :&[(&str, &str)] = &[#((#headers)),*];
 
             Box::pin(async move {
                 #fn_ident(req, res).await?;
@@ -144,8 +160,7 @@ fn handler_impl(
             })
         }
         use ::resty::__private::*;
-        #[linkme::distributed_slice(#router)]
-        #[linkme(crate = linkme)]
+        #slice_attr
         static #slice_ident: ::resty::RouteSlice =(&[#(#route),*], #variant);
     }
     .into())
